@@ -2,7 +2,6 @@
 set -e
 
 export GO111MODULE=on
-export GOFLAGS=-mod=vendor
 
 PROVIDER_ROOT=$(git rev-parse --show-toplevel)
 COMMIT_HASH=$(git rev-parse --short HEAD 2>/dev/null)
@@ -70,4 +69,4 @@ for OS in ${PROVIDER_BUILD_PLATFORMS[@]}; do
 done
 
 # generate provider.yaml
-GITHUB_OWNER=${GITHUB_OWNER:-"loft-sh"} go run -mod vendor "${PROVIDER_ROOT}/hack/provider/main.go" ${RELEASE_VERSION} ${BUILD_VERSION} ${PROVIDER_ROOT} > "${PROVIDER_ROOT}/release/provider.yaml"
+GITHUB_OWNER=${GITHUB_OWNER:-"loft-sh"} go run "${PROVIDER_ROOT}/hack/provider/main.go" ${RELEASE_VERSION} ${BUILD_VERSION} ${PROVIDER_ROOT} > "${PROVIDER_ROOT}/release/provider.yaml"
