@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
+	"strings"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	r53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/aws/smithy-go"
-	"maps"
-	"slices"
-	"strings"
 )
 
 // GetDevpodRoute53Zone retrieves the Route53 zone for the devpod if applicable. A zone name can either be specified
@@ -93,7 +94,7 @@ func UpsertDevpodRoute53Record(ctx context.Context, provider *AwsProvider, route
 		ChangeBatch: &r53types.ChangeBatch{
 			Changes: []r53types.Change{
 				{
-					Action: r53types.ChangeActionCreate,
+					Action: r53types.ChangeActionUpsert,
 					ResourceRecordSet: &r53types.ResourceRecordSet{
 						Name:            aws.String(hostname),
 						Type:            r53types.RRTypeA,
@@ -113,7 +114,7 @@ func UpsertDevpodRoute53Record(ctx context.Context, provider *AwsProvider, route
 func DeleteDevpodRoute53Record(ctx context.Context, provider *AwsProvider, zone route53Zone, machine Machine) error {
 	ip := machine.PrivateIP
 	if !zone.private {
-		ip = machine.PrivateIP
+		ip = machine.PublicIP
 	}
 
 	r53client := route53.NewFromConfig(provider.AwsConfig)
