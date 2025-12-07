@@ -37,26 +37,12 @@ func (cmd *InitCmd) Run(
 	machine *provider.Machine,
 	logs log.Logger,
 ) error {
-	config, err := options.FromEnv(true, true)
+	config, err := options.FromEnv(true, false)
 	if err != nil {
 		return err
 	}
 
-	cfg, err := aws.NewAWSConfig(ctx, logs, config)
-	if err != nil {
-		return err
-	}
-
-	_, err = aws.GetDevpodRunningInstance(
-		ctx,
-		cfg,
-		config.MachineID,
-	)
-	if err != nil {
-		return err
-	}
-
-	_, err = aws.GetDefaultAMI(ctx, cfg, config.MachineType)
+	_, err = aws.NewAWSConfig(ctx, logs, config)
 	if err != nil {
 		return err
 	}
