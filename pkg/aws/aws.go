@@ -21,11 +21,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
-	"github.com/loft-sh/devpod-provider-aws/pkg/options"
 	"github.com/loft-sh/devpod/pkg/client"
 	"github.com/loft-sh/devpod/pkg/log"
 	"github.com/loft-sh/devpod/pkg/ssh"
 	"github.com/pkg/errors"
+	"github.com/skevetter/devpod-provider-aws/pkg/options"
 )
 
 const tagKeyHostname = "devpod:hostname"
@@ -918,7 +918,7 @@ func Status(ctx context.Context, cfg aws.Config, name string) (client.Status, er
 	}
 
 	status := result.Status
-	switch  status{
+	switch status {
 	case "running":
 		return client.StatusRunning, nil
 	case "stopped":
