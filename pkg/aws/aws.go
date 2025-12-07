@@ -88,6 +88,11 @@ func NewProvider(ctx context.Context, withFolder bool, logs log.Logger) (*AwsPro
 
 func NewAWSConfig(ctx context.Context, logs log.Logger, options *options.Options) (aws.Config, error) {
 	var opts []func(*awsConfig.LoadOptions) error
+
+	if options.Zone != "" {
+		opts = append(opts, awsConfig.WithRegion(options.Zone))
+	}
+
 	if options.CustomCredentialCommand != "" {
 		var output bytes.Buffer
 		cmd := exec.Command("sh", "-c", options.CustomCredentialCommand)
@@ -139,6 +144,9 @@ func GetSubnet(ctx context.Context, provider *AwsProvider) (string, error) {
 		})
 		if err != nil {
 			return "", fmt.Errorf("list specified subnets %q: %w", provider.Config.SubnetIDs, err)
+		}
+		if len(subnets.Subnets) == 0 {
+			return "", fmt.Errorf("no subnets found with IDs %q", provider.Config.SubnetIDs)
 		}
 		var maxIPCount int32
 		var subnet *types.Subnet
@@ -213,10 +221,10 @@ func GetSubnet(ctx context.Context, provider *AwsProvider) (string, error) {
 	}
 
 	if provider.Config.VpcID == "" {
-		return "", errors.New("could not find a suitable subnet. Please either specify a subnet ID or VPC ID, or tag the desired subnets with devpod:devpod")
+		return "", errors.New("could not find a suitable subnet. Please either specify a subnet ID or VPC ID, or tag the desired subnets with devpod=devpod")
 	}
 
-	return "", nil
+	return "", fmt.Errorf("no suitable subnet found in VPC %q. Please specify a subnet ID or tag subnets with devpod=devpod", provider.Config.VpcID)
 }
 
 func GetDevpodVPC(ctx context.Context, provider *AwsProvider) (string, error) {
@@ -466,9 +474,13 @@ func CreateDevpodInstanceProfile(ctx context.Context, provider *AwsProvider) (st
 		return "", err
 	}
 
-	// TODO: need to find a better way to ensure
-	// role/profile propagation has succeeded
-	time.Sleep(time.Second * 10)
+	// Wait for instance profile to be available
+	waiter := iam.NewInstanceProfileExistsWaiter(svc)
+	if err := waiter.Wait(ctx, &iam.GetInstanceProfileInput{
+		InstanceProfileName: aws.String("devpod-ec2-role"),
+	}, 2*time.Minute); err != nil {
+		return "", fmt.Errorf("wait for instance profile: %w", err)
+	}
 
 	return *response.InstanceProfile.Arn, nil
 }
