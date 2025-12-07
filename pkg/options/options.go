@@ -26,6 +26,9 @@ var (
 	AWS_KMS_KEY_ARN_FOR_SESSION_MANAGER = "AWS_KMS_KEY_ARN_FOR_SESSION_MANAGER"
 	AWS_USE_ROUTE53                     = "AWS_USE_ROUTE53"
 	AWS_ROUTE53_ZONE_NAME               = "AWS_ROUTE53_ZONE_NAME"
+	AWS_ACCESS_KEY_ID                   = "AWS_ACCESS_KEY_ID"
+	AWS_SECRET_ACCESS_KEY               = "AWS_SECRET_ACCESS_KEY"
+	AWS_SESSION_TOKEN                   = "AWS_SESSION_TOKEN"
 	CUSTOM_AWS_CREDENTIAL_COMMAND       = "CUSTOM_AWS_CREDENTIAL_COMMAND"
 )
 
@@ -51,6 +54,9 @@ type Options struct {
 	UseRoute53Hostnames        bool
 	Route53ZoneName            string
 	CustomCredentialCommand    string
+	AccessKeyID                string
+	SecretAccessKey            string
+	SessionToken               string
 }
 
 func FromEnv(init, withFolder bool) (*Options, error) {
@@ -89,6 +95,9 @@ func FromEnv(init, withFolder bool) (*Options, error) {
 	retOptions.KmsKeyARNForSessionManager = os.Getenv(AWS_KMS_KEY_ARN_FOR_SESSION_MANAGER)
 	retOptions.UseRoute53Hostnames = os.Getenv(AWS_USE_ROUTE53) == "true"
 	retOptions.Route53ZoneName = os.Getenv(AWS_ROUTE53_ZONE_NAME)
+	retOptions.AccessKeyID = os.Getenv(AWS_ACCESS_KEY_ID)
+	retOptions.SecretAccessKey = os.Getenv(AWS_SECRET_ACCESS_KEY)
+	retOptions.SessionToken = os.Getenv(AWS_SESSION_TOKEN)
 
 	subnetIDs := os.Getenv(AWS_SUBNET_ID)
 	if subnetIDs != "" {

@@ -68,12 +68,18 @@ func NewProvider(ctx context.Context, withFolder bool, logs log.Logger) (*AwsPro
 		config.DiskImage = image
 	}
 
-	if config.RootDevice == "" && !isEC2 {
+	if config.RootDevice == "" && !isEC2 && config.DiskImage != "" {
 		device, err := GetAMIRootDevice(ctx, cfg, config.DiskImage)
 		if err != nil {
-			return nil, err
+			logs.Debugf("Could not determine root device for AMI %s: %v, using default /dev/sda1", config.DiskImage, err)
+			config.RootDevice = "/dev/sda1"
+		} else {
+			config.RootDevice = device
 		}
-		config.RootDevice = device
+	}
+
+	if config.RootDevice == "" {
+		config.RootDevice = "/dev/sda1"
 	}
 
 	// create provider
@@ -93,7 +99,15 @@ func NewAWSConfig(ctx context.Context, logs log.Logger, options *options.Options
 		opts = append(opts, awsConfig.WithRegion(options.Zone))
 	}
 
-	if options.CustomCredentialCommand != "" {
+	// Use explicit credentials if provided
+	if options.AccessKeyID != "" && options.SecretAccessKey != "" {
+		creds := aws.Credentials{
+			AccessKeyID:     options.AccessKeyID,
+			SecretAccessKey: options.SecretAccessKey,
+			SessionToken:    options.SessionToken,
+		}
+		opts = append(opts, awsConfig.WithCredentialsProvider(credentials.StaticCredentialsProvider{Value: creds}))
+	} else if options.CustomCredentialCommand != "" {
 		var output bytes.Buffer
 		cmd := exec.Command("sh", "-c", options.CustomCredentialCommand)
 		cmd.Stdout = &output
@@ -911,12 +925,12 @@ func Status(ctx context.Context, cfg aws.Config, name string) (client.Status, er
 	}
 
 	status := result.Status
-	switch {
-	case status == "running":
+	switch  status{
+	case "running":
 		return client.StatusRunning, nil
-	case status == "stopped":
+	case "stopped":
 		return client.StatusStopped, nil
-	case status == "terminated":
+	case "terminated":
 		return client.StatusNotFound, nil
 	default:
 		return client.StatusBusy, nil
