@@ -270,69 +270,58 @@ func GetDevpodVPC(ctx context.Context, provider *AwsProvider) (string, error) {
 func GetDefaultAMI(ctx context.Context, cfg aws.Config, instanceType string) (string, error) {
 	svc := ec2.NewFromConfig(cfg)
 
-	architecture := "x86_64"
-	// Graviton instances terminate with g
+	architecture := "amd64"
 	if strings.HasSuffix(strings.Split(instanceType, ".")[0], "g") {
 		architecture = "arm64"
 	}
 
-	input := &ec2.DescribeImagesInput{
-		Owners: []string{
-			"099720109477", // Canonical
-		},
-		Filters: []types.Filter{
-			{
-				Name: aws.String("name"),
-				Values: []string{
-					"ubuntu/images/hvm-ssd/ubuntu-jammy-22.04*",
-				},
-			},
-			{
-				Name: aws.String("architecture"),
-				Values: []string{
-					architecture,
-				},
-			},
-			{
-				Name: aws.String("root-device-type"),
-				Values: []string{
-					"ebs",
-				},
-			},
-			{
-				Name: aws.String("state"),
-				Values: []string{
-					"available",
-				},
-			},
-		},
+	// Try Ubuntu 24.04 LTS (Noble) first, then fall back to 22.04 LTS (Jammy)
+	patterns := []string{
+		fmt.Sprintf("ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-%s-server-*", architecture),
+		fmt.Sprintf("ubuntu/images/hvm-ssd/ubuntu-noble-24.04-%s-server-*", architecture),
+		fmt.Sprintf("ubuntu/images/hvm-ssd-gp3/ubuntu-jammy-22.04-%s-server-*", architecture),
+		fmt.Sprintf("ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-%s-server-*", architecture),
 	}
 
-	result, err := svc.DescribeImages(ctx, input)
-	if err != nil {
-		return "", err
-	}
-
-	// Check if any images were found
-	if len(result.Images) == 0 {
-		return "", fmt.Errorf("no matching AMI found for architecture %s with Ubuntu 22.04 LTS - you may need to specify a custom AMI using the AWS_AMI option", architecture)
-	}
-
-	// Sort by date, so we take the latest AMI available for Ubuntu 22.04
-	sort.Slice(result.Images, func(i, j int) bool {
-		iTime, err := time.Parse("2006-01-02T15:04:05.000Z", *result.Images[i].CreationDate)
-		if err != nil {
-			return false
-		}
-		jTime, err := time.Parse("2006-01-02T15:04:05.000Z", *result.Images[j].CreationDate)
-		if err != nil {
-			return false
+	for _, pattern := range patterns {
+		input := &ec2.DescribeImagesInput{
+			Owners: []string{"099720109477"}, // Canonical
+			Filters: []types.Filter{
+				{
+					Name:   aws.String("name"),
+					Values: []string{pattern},
+				},
+				{
+					Name:   aws.String("state"),
+					Values: []string{"available"},
+				},
+				{
+					Name:   aws.String("root-device-type"),
+					Values: []string{"ebs"},
+				},
+			},
 		}
 
-		return iTime.After(jTime)
-	})
+		result, err := svc.DescribeImages(ctx, input)
+		if err != nil {
+			return "", err
+		}
 
-	return *result.Images[0].ImageId, nil
+		if len(result.Images) == 0 {
+			continue
+		}
+
+		// Sort by creation date to get the latest
+		sort.Slice(result.Images, func(i, j int) bool {
+			iTime, _ := time.Parse("2006-01-02T15:04:05.000Z", *result.Images[i].CreationDate)
+			jTime, _ := time.Parse("2006-01-02T15:04:05.000Z", *result.Images[j].CreationDate)
+			return iTime.After(jTime)
+		})
+
+		return *result.Images[0].ImageId, nil
+	}
+
+	return "", fmt.Errorf("no matching Ubuntu LTS AMI found for architecture %s", architecture)
 }
 
 func GetAMIRootDevice(ctx context.Context, cfg aws.Config, diskImage string) (string, error) {
@@ -748,6 +737,10 @@ func GetDevpodRunningInstance(
 
 func GetInstanceTags(providerAws *AwsProvider, zone route53Zone) []types.TagSpecification {
 	tags := []types.Tag{
+		{
+			Key:   aws.String("Name"),
+			Value: aws.String(providerAws.Config.MachineID),
+		},
 		{
 			Key:   aws.String("devpod"),
 			Value: aws.String(providerAws.Config.MachineID),
