@@ -994,6 +994,7 @@ mkdir -p /home/devpod/.ssh
 echo "` + string(publicKey) + `" >> /home/devpod/.ssh/authorized_keys
 chmod 0700 /home/devpod/.ssh
 chmod 0600 /home/devpod/.ssh/authorized_keys
+mkdir -p /home/devpod/.aws
 chown -R devpod:devpod /home/devpod`
 
 	return base64.StdEncoding.EncodeToString([]byte(resultScript)), nil
