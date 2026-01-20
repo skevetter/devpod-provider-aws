@@ -167,8 +167,8 @@ func (cmd *CommandCmd) Run(
 		return err
 	} else {
 		// successfully connected to the public ip
-		defer sshClient.Close()
 		return ssh.Run(ctx, sshClient, command, os.Stdin, os.Stdout, os.Stderr)
+		defer func() { _ = sshClient.Close() }()
 	}
 }
 
@@ -194,7 +194,7 @@ func findAvailablePort() (int, error) {
 	if err != nil {
 		return -1, err
 	}
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 
 	return l.Addr().(*net.TCPAddr).Port, nil
 }
