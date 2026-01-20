@@ -13,7 +13,6 @@ import (
 	"github.com/loft-sh/devpod/pkg/log"
 	"github.com/loft-sh/devpod/pkg/provider"
 	"github.com/loft-sh/devpod/pkg/ssh"
-	devssh "github.com/loft-sh/devpod/pkg/ssh"
 	"github.com/spf13/cobra"
 )
 
@@ -108,12 +107,13 @@ func (cmd *CommandCmd) Run(
 		defer cancelFn()
 		waitForPort(timeoutCtx, addr)
 
-		client, err := devssh.NewSSHClient("devpod", addr, privateKey)
+		client, err := ssh.NewSSHClient("devpod", addr, privateKey)
 		if err != nil {
 			return err
 		}
+		defer func() { _ = client.Close() }()
 
-		err = devssh.Run(ctx, client, command, os.Stdin, os.Stdout, os.Stderr)
+		err = ssh.Run(ctx, client, command, os.Stdin, os.Stdout, os.Stderr)
 		if err != nil {
 			return err
 		}

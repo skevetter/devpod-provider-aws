@@ -34,10 +34,10 @@ func main() {
 		panic(err)
 	}
 
-	replaced := strings.Replace(string(content), "##VERSION##", releaseVersion, -1)
+	replaced := strings.ReplaceAll(string(content), "##VERSION##", releaseVersion)
 
 	if buildVersion == "dev" {
-		replaced = strings.Replace(replaced, "##PROJECT_ROOT##", projectRoot, -1)
+		replaced = strings.ReplaceAll(replaced, "##PROJECT_ROOT##", projectRoot)
 	} else {
 		githubOwner, found := os.LookupEnv("GITHUB_OWNER")
 		if !found {
@@ -65,7 +65,7 @@ func File(filePath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	hash := sha256.New()
 	_, err = io.Copy(hash, file)
