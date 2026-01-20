@@ -42,8 +42,8 @@ fi
 # Create the release directory
 mkdir -p "${PROVIDER_ROOT}/release"
 
-for OS in ${PROVIDER_BUILD_PLATFORMS[@]}; do
-  for ARCH in ${PROVIDER_BUILD_ARCHS[@]}; do
+for OS in "${PROVIDER_BUILD_PLATFORMS[@]}"; do
+  for ARCH in "${PROVIDER_BUILD_ARCHS[@]}"; do
     NAME="devpod-provider-aws-${OS}-${ARCH}"
     if [[ "${OS}" == "windows" ]]; then
       NAME="${NAME}.exe"
@@ -69,4 +69,4 @@ for OS in ${PROVIDER_BUILD_PLATFORMS[@]}; do
 done
 
 # generate provider.yaml
-GITHUB_OWNER=${GITHUB_OWNER:-"loft-sh"} go run "${PROVIDER_ROOT}/hack/provider/main.go" ${RELEASE_VERSION} ${BUILD_VERSION} ${PROVIDER_ROOT} > "${PROVIDER_ROOT}/release/provider.yaml"
+GITHUB_OWNER=${GITHUB_OWNER:-"loft-sh"} go run "${PROVIDER_ROOT}/hack/provider/main.go" "${RELEASE_VERSION}" ${BUILD_VERSION} "${PROVIDER_ROOT}" > "${PROVIDER_ROOT}/release/provider.yaml"
