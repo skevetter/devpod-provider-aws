@@ -156,7 +156,7 @@ func (cmd *CommandCmd) Run(
 			return err
 		}
 
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 		return ssh.Run(ctx, client, command, os.Stdin, os.Stdout, os.Stderr)
 	}
 
@@ -167,8 +167,8 @@ func (cmd *CommandCmd) Run(
 		return err
 	} else {
 		// successfully connected to the public ip
-		return ssh.Run(ctx, sshClient, command, os.Stdin, os.Stdout, os.Stderr)
 		defer func() { _ = sshClient.Close() }()
+		return ssh.Run(ctx, sshClient, command, os.Stdin, os.Stdout, os.Stderr)
 	}
 }
 
