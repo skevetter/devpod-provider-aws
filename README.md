@@ -1,10 +1,10 @@
 # AWS Provider for DevPod
 
-[![Join us on Slack!](docs/static/media/slack.svg)](https://slack.loft.sh/) [![Open in DevPod!](https://devpod.sh/assets/open-in-devpod.svg)](https://devpod.sh/open#https://github.com/loft-sh/devpod-provider-aws)
+[![Join us on Slack!](docs/static/media/slack.svg)](https://slack.loft.sh/) [![Open in DevPod!](https://devpod.sh/assets/open-in-devpod.svg)](https://devpod.sh/open#https://github.com/skevetter/devpod-provider-aws)
 
 ## Getting started
 
-The provider is available for auto-installation using 
+The provider is available for auto-installation using
 
 ```sh
 devpod provider add aws
@@ -35,18 +35,18 @@ You'll need to wait for the machine and environment setup.
 
 This provider has the following options
 
-|    NAME           | REQUIRED |          DESCRIPTION                  |         DEFAULT         |
-|-------------------|----------|---------------------------------------|-------------------------|
-| AWS_AMI           | false    | The disk image to use.                | latest ubuntu in the region with proper architecture for the instance  |
-| AWS_DISK_SIZE     | false    | The disk size to use.                 | 40                      |
-| AWS_ROOT_DEVICE   | false    | The ID of the root device.            | The `RootDeviceName` property of the AMI, or `/dev/sda1` if undefined  |
-| AWS_INSTANCE_TYPE | false    | The machine type to use.              | c5.xlarge               |
-| AWS_REGION        | true     | The aws cloud region to create the VM |                         |
-| AWS_VPC_ID        | false    | The vpc id to use.                    |                         |
-| AWS_SECURITY_GROUP_ID | false | The security group ID is a comma separated list of IDs for the VM     |  created if not specified |
-| AWS_SUBNET_ID         | false | The subnet ID for the VM | created if not specified |
-| AWS_INSTANCE_TAGS     | false | Additional flags for the VM in the form of "Name=XXX,Value=YYY " | |
-| AWS_INSTANCE_PROFILE_ARN  | false | The ARN of the instance profile to use for the VM | created if not specified |
+| NAME                     | REQUIRED | DESCRIPTION                                                       | DEFAULT                                                               |
+| ------------------------ | -------- | ----------------------------------------------------------------- | --------------------------------------------------------------------- |
+| AWS_AMI                  | false    | The disk image to use.                                            | latest ubuntu in the region with proper architecture for the instance |
+| AWS_DISK_SIZE            | false    | The disk size to use.                                             | 40                                                                    |
+| AWS_ROOT_DEVICE          | false    | The ID of the root device.                                        | The `RootDeviceName` property of the AMI, or `/dev/sda1` if undefined |
+| AWS_INSTANCE_TYPE        | false    | The machine type to use.                                          | c5.xlarge                                                             |
+| AWS_REGION               | true     | The aws cloud region to create the VM                             |                                                                       |
+| AWS_VPC_ID               | false    | The vpc id to use.                                                |                                                                       |
+| AWS_SECURITY_GROUP_ID    | false    | The security group ID is a comma separated list of IDs for the VM | created if not specified                                              |
+| AWS_SUBNET_ID            | false    | The subnet ID for the VM                                          | created if not specified                                              |
+| AWS_INSTANCE_TAGS        | false    | Additional flags for the VM in the form of "Name=XXX,Value=YYY "  |                                                                       |
+| AWS_INSTANCE_PROFILE_ARN | false    | The ARN of the instance profile to use for the VM                 | created if not specified                                              |
 
 You will need an user profile able to:
     - Create/Start/Stop/Destroy instances
@@ -63,6 +63,6 @@ Options can either be set in `env` or on the command line, for example:
 devpod provider set-options -o AWS_AMI=my-custom-ami
 ```
 
-You can use a variety of AWS_INSTANCE_TYPE, from [this list](https://github.com/loft-sh/devpod-provider-aws/blob/ca830cc2b0f530436475ba29791391f80458ab6a/hack/provider/provider.yaml#L88), they include
+You can use a variety of AWS_INSTANCE_TYPE, from [this list](https://github.com/skevetter/devpod-provider-aws/blob/ca830cc2b0f530436475ba29791391f80458ab6a/hack/provider/provider.yaml#L88), they include
 AMD, Intel and ARM64 instances, the list is automatically suggested when using
 the GUI application.
