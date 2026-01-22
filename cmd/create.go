@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/loft-sh/devpod-provider-aws/pkg/aws"
-	"github.com/loft-sh/devpod/pkg/log"
 	"github.com/loft-sh/devpod/pkg/provider"
+	"github.com/skevetter/log"
 	"github.com/spf13/cobra"
 )
 
