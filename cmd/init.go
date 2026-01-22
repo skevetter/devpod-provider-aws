@@ -3,9 +3,9 @@ package cmd
 import (
 	"context"
 
-	"github.com/loft-sh/devpod/pkg/provider"
 	"github.com/skevetter/devpod-provider-aws/pkg/aws"
 	"github.com/skevetter/devpod-provider-aws/pkg/options"
+	"github.com/skevetter/devpod/pkg/provider"
 	"github.com/skevetter/log"
 	"github.com/spf13/cobra"
 )
@@ -22,7 +22,7 @@ func NewInitCmd() *cobra.Command {
 		RunE: func(_ *cobra.Command, args []string) error {
 			return cmd.Run(
 				context.Background(),
-				provider.FromEnvironment(),
+				getMachineProviderFromEnv(),
 				log.Default,
 			)
 		},

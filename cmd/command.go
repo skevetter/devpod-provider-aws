@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/loft-sh/devpod/pkg/provider"
-	"github.com/loft-sh/devpod/pkg/ssh"
 	"github.com/skevetter/devpod-provider-aws/pkg/aws"
+	"github.com/skevetter/devpod/pkg/provider"
+	"github.com/skevetter/devpod/pkg/ssh"
 	"github.com/skevetter/log"
 	"github.com/spf13/cobra"
 )
@@ -34,7 +34,7 @@ func NewCommandCmd() *cobra.Command {
 			return cmd.Run(
 				context.Background(),
 				awsProvider,
-				provider.FromEnvironment(),
+				getMachineProviderFromEnv(),
 				log.Default,
 			)
 		},
@@ -113,7 +113,7 @@ func (cmd *CommandCmd) Run(
 		}
 		defer func() { _ = client.Close() }()
 
-		err = ssh.Run(ctx, client, command, os.Stdin, os.Stdout, os.Stderr)
+		err = ssh.Run(ctx, client, command, os.Stdin, os.Stdout, os.Stderr, nil)
 		if err != nil {
 			return err
 		}
@@ -157,7 +157,7 @@ func (cmd *CommandCmd) Run(
 		}
 
 		defer func() { _ = client.Close() }()
-		return ssh.Run(ctx, client, command, os.Stdin, os.Stdout, os.Stderr)
+		return ssh.Run(ctx, client, command, os.Stdin, os.Stdout, os.Stderr, nil)
 	}
 
 	host := instance.Host()
@@ -168,7 +168,7 @@ func (cmd *CommandCmd) Run(
 	} else {
 		// successfully connected to the public ip
 		defer func() { _ = sshClient.Close() }()
-		return ssh.Run(ctx, sshClient, command, os.Stdin, os.Stdout, os.Stderr)
+		return ssh.Run(ctx, sshClient, command, os.Stdin, os.Stdout, os.Stderr, nil)
 	}
 }
 
@@ -189,6 +189,18 @@ func waitForPort(ctx context.Context, addr string) {
 	}
 
 }
+
+func getMachineProviderFromEnv() *provider.Machine {
+	return &provider.Machine{
+		ID:     os.Getenv(provider.MACHINE_ID),
+		Origin: os.Getenv(provider.MACHINE_FOLDER),
+		Provider: provider.MachineProviderConfig{
+			Name: os.Getenv(provider.MACHINE_PROVIDER),
+		},
+		Context: os.Getenv(provider.MACHINE_CONTEXT),
+	}
+}
+
 func findAvailablePort() (int, error) {
 	l, err := net.Listen("tcp", ":0")
 	if err != nil {

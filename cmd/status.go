@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/loft-sh/devpod/pkg/provider"
 	"github.com/skevetter/devpod-provider-aws/pkg/aws"
+	"github.com/skevetter/devpod/pkg/provider"
 	"github.com/skevetter/log"
 	"github.com/spf13/cobra"
 )
@@ -42,7 +42,7 @@ func NewStatusCmd() *cobra.Command {
 			return cmd.Run(
 				context.Background(),
 				awsProvider,
-				provider.FromEnvironment(),
+				getMachineProviderFromEnv(),
 				log.Default,
 			)
 		},
