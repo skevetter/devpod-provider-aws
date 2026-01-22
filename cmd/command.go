@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/skevetter/devpod-provider-aws/pkg/aws"
 	"github.com/loft-sh/devpod/pkg/provider"
 	"github.com/loft-sh/devpod/pkg/ssh"
+	"github.com/skevetter/devpod-provider-aws/pkg/aws"
 	"github.com/skevetter/log"
 	"github.com/spf13/cobra"
 )
