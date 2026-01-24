@@ -21,6 +21,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/pkg/errors"
 	"github.com/skevetter/devpod-provider-aws/pkg/options"
 	"github.com/skevetter/devpod/pkg/client"
@@ -46,34 +47,43 @@ func isEC2Instance() bool {
 	return true
 }
 
-func NewProvider(ctx context.Context, withFolder bool, logs log.Logger) (*AwsProvider, error) {
+func NewProvider(ctx context.Context, withFolder bool, log log.Logger) (*AwsProvider, error) {
+	log.Debugf("creating new AWS provider")
 	config, err := options.FromEnv(false, withFolder)
 	if err != nil {
 		return nil, err
 	}
 
-	cfg, err := NewAWSConfig(ctx, logs, config)
+	cfg, err := NewAWSConfig(ctx, log, config)
 	if err != nil {
 		return nil, err
 	}
 
+	if err := logCallerIdentity(ctx, cfg, log); err != nil {
+		log.Warnf("failed to get caller identity: %v", err)
+	}
+
 	isEC2 := isEC2Instance()
+	log.Debugf("running in EC2 instance: %v", isEC2)
 
 	if config.DiskImage == "" && !isEC2 {
+		log.Debugf("no disk image specified, fetching default AMI for instance type: %s", config.MachineType)
 		image, err := GetDefaultAMI(ctx, cfg, config.MachineType)
 		if err != nil {
 			return nil, err
 		}
-
+		log.Debugf("using default AMI: %s", image)
 		config.DiskImage = image
 	}
 
 	if config.RootDevice == "" && !isEC2 && config.DiskImage != "" {
+		log.Debugf("determining root device for AMI: %s", config.DiskImage)
 		device, err := GetAMIRootDevice(ctx, cfg, config.DiskImage)
 		if err != nil {
-			logs.Debugf("Could not determine root device for AMI %s: %v, using default /dev/sda1", config.DiskImage, err)
+			log.Debugf("could not determine root device for AMI %s: %v, using default /dev/sda1", config.DiskImage, err)
 			config.RootDevice = "/dev/sda1"
 		} else {
+			log.Debugf("using root device: %s", device)
 			config.RootDevice = device
 		}
 	}
@@ -86,13 +96,15 @@ func NewProvider(ctx context.Context, withFolder bool, logs log.Logger) (*AwsPro
 	provider := &AwsProvider{
 		Config:    config,
 		AwsConfig: cfg,
-		Log:       logs,
+		Log:       log,
 	}
 
+	log.Debugf("AWS provider created successfully")
 	return provider, nil
 }
 
-func NewAWSConfig(ctx context.Context, logs log.Logger, options *options.Options) (aws.Config, error) {
+func NewAWSConfig(ctx context.Context, log log.Logger, options *options.Options) (aws.Config, error) {
+	log.Debugf("configuring AWS SDK for region: %s", options.Zone)
 	var opts []func(*awsConfig.LoadOptions) error
 
 	if options.Zone != "" {
@@ -101,6 +113,7 @@ func NewAWSConfig(ctx context.Context, logs log.Logger, options *options.Options
 
 	// Use explicit credentials if provided
 	if options.AccessKeyID != "" && options.SecretAccessKey != "" {
+		log.Debugf("using provided AWS credentials")
 		creds := aws.Credentials{
 			AccessKeyID:     options.AccessKeyID,
 			SecretAccessKey: options.SecretAccessKey,
@@ -108,10 +121,11 @@ func NewAWSConfig(ctx context.Context, logs log.Logger, options *options.Options
 		}
 		opts = append(opts, awsConfig.WithCredentialsProvider(credentials.StaticCredentialsProvider{Value: creds}))
 	} else if options.CustomCredentialCommand != "" {
+		log.Debugf("using custom credential command: %s", options.CustomCredentialCommand)
 		var output bytes.Buffer
 		cmd := exec.Command("sh", "-c", options.CustomCredentialCommand)
 		cmd.Stdout = &output
-		cmd.Stderr = logs.Writer(logrus.ErrorLevel, true)
+		cmd.Stderr = log.Writer(logrus.ErrorLevel, true)
 		if err := cmd.Run(); err != nil {
 			return aws.Config{}, fmt.Errorf("run command %q: %w", options.CustomCredentialCommand, err)
 		}
@@ -128,12 +142,15 @@ func NewAWSConfig(ctx context.Context, logs log.Logger, options *options.Options
 
 		// we managed to parse credentials from the external source. Let's use them through a credentials provider
 		opts = append(opts, awsConfig.WithCredentialsProvider(credentials.StaticCredentialsProvider{Value: creds}))
+	} else {
+		log.Debugf("using default AWS credential chain")
 	}
 
 	cfg, err := awsConfig.LoadDefaultConfig(ctx, opts...)
 	if err != nil {
 		return aws.Config{}, err
 	}
+	log.Debugf("AWS SDK configured")
 	return cfg, nil
 }
 
@@ -145,14 +162,18 @@ type AwsProvider struct {
 }
 
 func GetSubnet(ctx context.Context, provider *AwsProvider) (string, error) {
+	provider.Log.Debugf("getting subnet for VPC: %s, AvailabilityZone: %s", provider.Config.VpcID, provider.Config.AvailabilityZone)
+
 	// in case a single subnet ID is specified, use it without further checks
 	if len(provider.Config.SubnetIDs) == 1 {
+		provider.Log.Debugf("using subnet: %s", provider.Config.SubnetIDs[0])
 		return provider.Config.SubnetIDs[0], nil
 	}
 
 	svc := ec2.NewFromConfig(provider.AwsConfig)
 	// in case multiple subnet IDs are specified, we return the one with most free IPs
 	if len(provider.Config.SubnetIDs) > 1 {
+		provider.Log.Debugf("selecting subnet from %d specified subnets", len(provider.Config.SubnetIDs))
 		subnets, err := svc.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
 			SubnetIds: provider.Config.SubnetIDs,
 		})
@@ -182,9 +203,11 @@ func GetSubnet(ctx context.Context, provider *AwsProvider) (string, error) {
 			}
 		}
 
+		provider.Log.Infof("selected subnet %s with %d available IPs", *subnet.SubnetId, maxIPCount)
 		return *subnet.SubnetId, nil
 	}
 
+	provider.Log.Infof("searching for suitable subnet")
 	// retrieve and index all visible subnets
 	input := &ec2.DescribeSubnetsInput{}
 	if provider.Config.AvailabilityZone != "" {
@@ -226,11 +249,13 @@ func GetSubnet(ctx context.Context, provider *AwsProvider) (string, error) {
 
 	// if we found tagged subnets, we return the one with the most free IPs
 	if taggedSubnet != nil {
+		provider.Log.Debugf("found tagged subnet %s with %d available IPs", *taggedSubnet.SubnetId, taggedSubnetMaxIPCount)
 		return *taggedSubnet.SubnetId, nil
 	}
 
 	// we found no tagged subnet so far. If a VPC is specified, we search for a subnet with the most free IPs that can do also public-ipv4
 	if vpcedSubnet != nil {
+		provider.Log.Debugf("found VPC subnet %s with %d available IPs", *vpcedSubnet.SubnetId, vpcedSubnetMaxIPCount)
 		return *vpcedSubnet.SubnetId, nil
 	}
 
@@ -792,15 +817,29 @@ func Create(
 	cfg aws.Config,
 	providerAws *AwsProvider,
 ) (Machine, error) {
+	providerAws.Log.Debugf("creating EC2 instance for machine: %s, type: %s, AMI: %s, disk: %dGB",
+		providerAws.Config.MachineID,
+		providerAws.Config.MachineType,
+		providerAws.Config.DiskImage,
+		providerAws.Config.DiskSizeGB,
+	)
+
+	if err := logCallerIdentity(ctx, cfg, providerAws.Log); err != nil {
+		providerAws.Log.Warnf("failed to get caller identity: %v", err)
+	}
+
 	svc := ec2.NewFromConfig(cfg)
 
+	providerAws.Log.Debugf("getting security groups")
 	devpodSG, err := GetDevpodSecurityGroups(ctx, providerAws)
 	if err != nil {
 		return Machine{}, err
 	}
+	providerAws.Log.Debugf("using security groups: %v", devpodSG)
 
 	volSizeI32 := int32(providerAws.Config.DiskSizeGB)
 
+	providerAws.Log.Debugf("generating user data script")
 	userData, err := GetInjectKeypairScript(providerAws.Config.MachineFolder)
 	if err != nil {
 		return Machine{}, err
@@ -808,10 +847,12 @@ func Create(
 
 	var r53Zone route53Zone
 	if providerAws.Config.UseRoute53Hostnames {
+		providerAws.Log.Debugf("Route53 hostnames enabled, getting zone")
 		r53Zone, err = GetDevpodRoute53Zone(ctx, providerAws)
 		if err != nil {
 			return Machine{}, err
 		}
+		providerAws.Log.Debugf("using Route53 zone: %s (ID: %s)", r53Zone.Name, r53Zone.id)
 	}
 
 	instance := &ec2.RunInstancesInput{
@@ -837,6 +878,7 @@ func Create(
 		UserData:          &userData,
 	}
 	if providerAws.Config.UseSpotInstance {
+		providerAws.Log.Debugf("using spot instance")
 		instance.InstanceMarketOptions = &types.InstanceMarketOptionsRequest{
 			MarketType: "spot",
 			SpotOptions: &types.SpotMarketOptions{
@@ -846,30 +888,40 @@ func Create(
 		}
 	}
 
+	providerAws.Log.Debugf("getting instance profile")
 	profile, err := GetDevpodInstanceProfile(ctx, providerAws)
 	if err == nil {
+		providerAws.Log.Debugf("using instance profile: %s", profile)
 		instance.IamInstanceProfile = &types.IamInstanceProfileSpecification{
 			Arn: aws.String(profile),
 		}
+	} else {
+		providerAws.Log.Warnf("failed to get instance profile: %v", err)
 	}
 
 	subnetID, err := GetSubnet(ctx, providerAws)
 	if err != nil {
 		return Machine{}, fmt.Errorf("determine subnet ID: %w", err)
 	}
+	providerAws.Log.Debugf("using subnet: %s", subnetID)
 	instance.SubnetId = &subnetID
 
+	providerAws.Log.Debugf("launching EC2 instance")
 	result, err := svc.RunInstances(ctx, instance)
 	if err != nil {
 		return Machine{}, err
 	}
+	providerAws.Log.Debugf("EC2 instance launched: %s", *result.Instances[0].InstanceId)
 
 	if r53Zone.id != "" {
-		if err := UpsertDevpodRoute53Record(ctx, providerAws, r53Zone.id, providerAws.Config.MachineID+"."+r53Zone.Name, *result.Instances[0].PrivateIpAddress); err != nil {
+		hostname := providerAws.Config.MachineID + "." + r53Zone.Name
+		providerAws.Log.Debugf("creating Route53 record: %s -> %s", hostname, *result.Instances[0].PrivateIpAddress)
+		if err := UpsertDevpodRoute53Record(ctx, providerAws, r53Zone.id, hostname, *result.Instances[0].PrivateIpAddress); err != nil {
 			return Machine{}, err
 		}
 	}
 
+	providerAws.Log.Debugf("instance creation completed")
 	return NewMachineFromInstance(result.Instances[0]), nil
 }
 
@@ -997,4 +1049,18 @@ chmod 0600 /home/devpod/.ssh/authorized_keys
 chown -R devpod:devpod /home/devpod`
 
 	return base64.StdEncoding.EncodeToString([]byte(resultScript)), nil
+}
+
+func logCallerIdentity(ctx context.Context, cfg aws.Config, logs log.Logger) error {
+	svc := sts.NewFromConfig(cfg)
+	result, err := svc.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	if err != nil {
+		return err
+	}
+
+	logs.Debugf("AWS Caller Identity Account: %s, ARN: %s, UserID: %s",
+		aws.ToString(result.Account),
+		aws.ToString(result.Arn),
+		aws.ToString(result.UserId))
+	return nil
 }
