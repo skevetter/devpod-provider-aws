@@ -4,34 +4,36 @@ on:
   release:
     types: [created]
 
+permissions:
+  contents: write
+
 jobs:
-  publish-cli:
-    name: Publish CLI Release
-    if: startsWith(github.ref, 'refs/tags/v') == true
-    runs-on: macos-latest
+  release:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: setup Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: "go.mod"
+          go-version-file: go.mod
 
-      - name: get version
-        id: get_version
-        run: |
-          RELEASE_VERSION="$(echo "$GITHUB_REF" | sed -nE 's!refs/tags/!!p')"
-          echo "release_version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: build
-        run: |
-          chmod +x ./hack/build.sh
-          ./hack/build.sh
+      - name: run goreleaser
+        id: goreleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
         env:
-          RELEASE_VERSION: ${{ steps.get_version.outputs.release_version }}
-          GITHUB_OWNER: ${{ github.repository_owner }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: release
+      - name: generate provider.yaml
+        run: go run ./hack/provider/main.go ${{ fromJSON(steps.goreleaser.outputs.metadata).tag }} > ./dist/provider.yaml
+
+      - name: upload provider.yaml
         uses: softprops/action-gh-release@v2
         with:
-          files: release/*
+          tag_name: ${{ fromJSON(steps.goreleaser.outputs.metadata).tag }}
+          files: ./dist/provider.yaml

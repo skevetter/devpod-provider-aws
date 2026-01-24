@@ -1,0 +1,23 @@
+version: "3"
+
+tasks:
+  build:cli:
+    desc: Build the cli
+    cmds:
+      - goreleaser release --snapshot --clean
+
+  build:provider:dev:
+    desc: Build provider.yaml for local development
+    deps: ["build:cli"]
+    env:
+      PROJECT_ROOT: ./dist
+    cmd: go run ./hack/provider/main.go v0.0.0 > ./dist/provider.yaml
+
+  build:provider:release:
+    desc: Build provider.yaml for GitHub release
+    env:
+      GITHUB_OWNER: skevetter
+    cmd: go run ./hack/provider/main.go {{ .VERSION }} > ./dist/provider.yaml
+    vars:
+      VERSION:
+        sh: git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0"

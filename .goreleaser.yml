@@ -1,0 +1,31 @@
+version: 2
+project_name: devpod-provider-aws
+builds:
+  - id: build
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    overrides:
+      - goos: linux
+        goarch: amd64
+        tags:
+          - netgo
+          - osusergo
+      - goos: linux
+        goarch: arm64
+        tags:
+          - netgo
+          - osusergo
+    ignore:
+      - goos: windows
+        goarch: arm64
+    env:
+      - CGO_ENABLED=0
+    ldflags: -s -w -extldflags '-static' -X main.build={{ .Version }} -X main.commit={{ .Commit }} -X main.date={{ .Date }}
+    binary: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+archives:
+  - id: default
+    formats: ["binary"]
+    name_template: "{{ .Binary }}"
