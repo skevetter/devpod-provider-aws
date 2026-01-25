@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/sirupsen/logrus"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -206,15 +207,21 @@ func selectFromSpecifiedSubnets(ctx context.Context, svc *ec2.Client, subnetIDs 
 }
 
 func selectSubnetWithMostIPs(subnets []types.Subnet, az string) *types.Subnet {
-	var maxIPCount int32
+	var maxIPCount int32 = -1
 	var selected *types.Subnet
-	for _, s := range subnets {
-		if az != "" && *s.AvailabilityZone != az {
+	for i := range subnets {
+		s := subnets[i]
+		if az != "" {
+			if s.AvailabilityZone == nil || *s.AvailabilityZone != az {
+				continue
+			}
+		}
+		if s.AvailableIpAddressCount == nil {
 			continue
 		}
-		if *s.AvailableIpAddressCount > maxIPCount {
+		if selected == nil || *s.AvailableIpAddressCount > maxIPCount {
 			maxIPCount = *s.AvailableIpAddressCount
-			selected = &s
+			selected = &subnets[i]
 		}
 	}
 	return selected
@@ -263,15 +270,23 @@ func listAllSubnets(ctx context.Context, svc *ec2.Client, az string) ([]types.Su
 }
 
 func findTaggedDevPodSubnet(subnets []types.Subnet) *types.Subnet {
-	var maxIPCount int32
+	var maxIPCount int32 = -1
 	var selected *types.Subnet
-	for _, s := range subnets {
+	for i := range subnets {
+		s := subnets[i]
+		if s.AvailableIpAddressCount == nil {
+			continue
+		}
 		for _, tag := range s.Tags {
+			if tag.Key == nil || tag.Value == nil {
+				continue
+			}
 			if *tag.Key == "devpod" && *tag.Value == "devpod" {
-				if *s.AvailableIpAddressCount > maxIPCount {
+				if selected == nil || *s.AvailableIpAddressCount > maxIPCount {
 					maxIPCount = *s.AvailableIpAddressCount
-					selected = &s
+					selected = &subnets[i]
 				}
+				break
 			}
 		}
 	}
@@ -282,12 +297,16 @@ func findVPCPublicSubnet(subnets []types.Subnet, vpcID string) *types.Subnet {
 	if vpcID == "" {
 		return nil
 	}
-	var maxIPCount int32
+	var maxIPCount int32 = -1
 	var selected *types.Subnet
-	for _, s := range subnets {
+	for i := range subnets {
+		s := &subnets[i]
+		if s.VpcId == nil || s.MapPublicIpOnLaunch == nil || s.AvailableIpAddressCount == nil {
+			continue
+		}
 		if *s.VpcId == vpcID && *s.MapPublicIpOnLaunch && *s.AvailableIpAddressCount > maxIPCount {
 			maxIPCount = *s.AvailableIpAddressCount
-			selected = &s
+			selected = s
 		}
 	}
 	return selected
@@ -446,7 +465,14 @@ func createIAMRole(ctx context.Context, svc *iam.Client) error {
 		AssumeRolePolicyDocument: aws.String(string(assumeRolePolicyJSON)),
 		RoleName:                 aws.String("devpod-ec2-role"),
 	})
-	return err
+	if err != nil {
+		var exists *iamtypes.EntityAlreadyExistsException
+		if errors.As(err, &exists) {
+			return nil
+		}
+		return fmt.Errorf("create role: %w", err)
+	}
+	return nil
 }
 
 func attachRolePolicies(ctx context.Context, svc *iam.Client, kmsArn string) error {
@@ -491,28 +517,64 @@ func attachRolePolicies(ctx context.Context, svc *iam.Client, kmsArn string) err
 }
 
 func createInstanceProfile(ctx context.Context, svc *iam.Client) (string, error) {
-	response, err := svc.CreateInstanceProfile(ctx, &iam.CreateInstanceProfileInput{
-		InstanceProfileName: aws.String("devpod-ec2-role"),
-	})
+	arn, err := createOrGetInstanceProfile(ctx, svc)
 	if err != nil {
 		return "", err
 	}
 
-	if _, err = svc.AddRoleToInstanceProfile(ctx, &iam.AddRoleToInstanceProfileInput{
-		InstanceProfileName: aws.String("devpod-ec2-role"),
-		RoleName:            aws.String("devpod-ec2-role"),
-	}); err != nil {
+	if err := attachRoleToProfile(ctx, svc); err != nil {
 		return "", err
 	}
 
+	if err := waitForInstanceProfile(ctx, svc); err != nil {
+		return "", err
+	}
+
+	return arn, nil
+}
+
+func createOrGetInstanceProfile(ctx context.Context, svc *iam.Client) (string, error) {
+	response, err := svc.CreateInstanceProfile(ctx, &iam.CreateInstanceProfileInput{
+		InstanceProfileName: aws.String("devpod-ec2-role"),
+	})
+	if err != nil {
+		var exists *iamtypes.EntityAlreadyExistsException
+		if errors.As(err, &exists) {
+			getResponse, err := svc.GetInstanceProfile(ctx, &iam.GetInstanceProfileInput{
+				InstanceProfileName: aws.String("devpod-ec2-role"),
+			})
+			if err != nil {
+				return "", fmt.Errorf("get instance profile: %w", err)
+			}
+			return *getResponse.InstanceProfile.Arn, nil
+		}
+		return "", fmt.Errorf("create instance profile: %w", err)
+	}
+	return *response.InstanceProfile.Arn, nil
+}
+
+func attachRoleToProfile(ctx context.Context, svc *iam.Client) error {
+	_, err := svc.AddRoleToInstanceProfile(ctx, &iam.AddRoleToInstanceProfileInput{
+		InstanceProfileName: aws.String("devpod-ec2-role"),
+		RoleName:            aws.String("devpod-ec2-role"),
+	})
+	if err != nil {
+		var already *iamtypes.EntityAlreadyExistsException
+		if !errors.As(err, &already) {
+			return fmt.Errorf("add role to instance profile: %w", err)
+		}
+	}
+	return nil
+}
+
+func waitForInstanceProfile(ctx context.Context, svc *iam.Client) error {
 	waiter := iam.NewInstanceProfileExistsWaiter(svc)
 	if err := waiter.Wait(ctx, &iam.GetInstanceProfileInput{
 		InstanceProfileName: aws.String("devpod-ec2-role"),
 	}, 2*time.Minute); err != nil {
-		return "", fmt.Errorf("wait for instance profile: %w", err)
+		return fmt.Errorf("wait for instance profile: %w", err)
 	}
-
-	return *response.InstanceProfile.Arn, nil
+	return nil
 }
 
 func GetDevpodSecurityGroups(ctx context.Context, provider *AwsProvider) ([]string, error) {
