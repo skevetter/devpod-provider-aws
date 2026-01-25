@@ -133,7 +133,7 @@ func setRootDevice(ctx context.Context, cfg aws.Config, config *options.Options,
 
 func NewAWSConfig(ctx context.Context, log log.Logger, options *options.Options) (aws.Config, error) {
 	log.Debugf("configuring AWS SDK for region: %s", options.Zone)
-	opts := buildConfigOptions(log, options)
+	opts := buildConfigOptions(ctx, log, options)
 	cfg, err := awsConfig.LoadDefaultConfig(ctx, opts...)
 	if err != nil {
 		return aws.Config{}, err
@@ -142,7 +142,7 @@ func NewAWSConfig(ctx context.Context, log log.Logger, options *options.Options)
 	return cfg, nil
 }
 
-func buildConfigOptions(log log.Logger, options *options.Options) []func(*awsConfig.LoadOptions) error {
+func buildConfigOptions(ctx context.Context, log log.Logger, options *options.Options) []func(*awsConfig.LoadOptions) error {
 	var opts []func(*awsConfig.LoadOptions) error
 
 	if options.Zone != "" {
@@ -159,10 +159,11 @@ func buildConfigOptions(log log.Logger, options *options.Options) []func(*awsCon
 			},
 		}))
 	} else if options.CustomCredentialCommand != "" {
-		creds, err := executeCredentialCommand(options.CustomCredentialCommand, log)
-		if err == nil {
-			opts = append(opts, awsConfig.WithCredentialsProvider(credentials.StaticCredentialsProvider{Value: creds}))
+		creds, err := executeCredentialCommand(ctx, options.CustomCredentialCommand, log)
+		if err != nil {
+			log.Errorf("custom credential command failed: %v", err)
 		}
+		opts = append(opts, awsConfig.WithCredentialsProvider(credentials.StaticCredentialsProvider{Value: creds}))
 	} else {
 		profile := os.Getenv("AWS_PROFILE")
 		if profile != "" {
@@ -175,23 +176,29 @@ func buildConfigOptions(log log.Logger, options *options.Options) []func(*awsCon
 	return opts
 }
 
-func executeCredentialCommand(command string, log log.Logger) (aws.Credentials, error) {
+func executeCredentialCommand(ctx context.Context, command string, log log.Logger) (aws.Credentials, error) {
 	log.Debugf("using custom credential command: %s", command)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
 	var output bytes.Buffer
-	cmd := exec.Command("sh", "-c", command)
+	cmd := exec.CommandContext(ctx, "sh", "-c", command)
 	cmd.Stdout = &output
 	cmd.Stderr = log.Writer(logrus.ErrorLevel, true)
 	if err := cmd.Run(); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return aws.Credentials{}, fmt.Errorf("credential command timed out after 30s")
+		}
 		return aws.Credentials{}, fmt.Errorf("run command %q: %w", command, err)
 	}
 
 	var creds aws.Credentials
 	if err := json.Unmarshal(output.Bytes(), &creds); err != nil {
-		return aws.Credentials{}, fmt.Errorf("parse AWS credential JSON output %q: %w", output.Bytes(), err)
+		return aws.Credentials{}, fmt.Errorf("parse AWS credential JSON output: %w", err)
 	}
 
 	if creds.AccessKeyID == "" || creds.SecretAccessKey == "" {
-		return aws.Credentials{}, fmt.Errorf("missing access key id or secret access key in JSON output %q", output.Bytes())
+		return aws.Credentials{}, fmt.Errorf("custom credential command output missing required fields")
 	}
 
 	return creds, nil
