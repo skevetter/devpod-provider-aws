@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"regexp"
 	"sort"
@@ -30,7 +31,12 @@ import (
 	"github.com/skevetter/log"
 )
 
-const tagKeyHostname = "devpod:hostname"
+const (
+	tagKeyHostname             = "devpod:hostname"
+	devpodIAMResourceName      = "devpod-ec2-role"
+	iamEC2PolicyName           = "devpod-ec2-policy"
+	iamSSMKMSDecryptPolicyName = "ssm-kms-decrypt-policy"
+)
 
 // detect if we're in an ec2 instance
 func isEC2Instance() bool {
@@ -64,38 +70,12 @@ func NewProvider(ctx context.Context, withFolder bool, log log.Logger) (*AwsProv
 		log.Warnf("failed to get caller identity: %v", err)
 	}
 
-	isEC2 := isEC2Instance()
-	log.Debugf("running in EC2 instance: %v", isEC2)
-
-	if config.DiskImage == "" && !isEC2 {
-		log.Debugf("no disk image specified, fetching default AMI for instance type: %s", config.MachineType)
-		image, err := GetDefaultAMI(ctx, cfg, config.MachineType)
-		if err != nil {
-			return nil, err
-		}
-		log.Debugf("using default AMI: %s", image)
-		config.DiskImage = image
-	}
-
-	if config.RootDevice == "" && !isEC2 && config.DiskImage != "" {
-		log.Debugf("determining root device for AMI: %s", config.DiskImage)
-		device, err := GetAMIRootDevice(ctx, cfg, config.DiskImage)
-		if err != nil {
-			log.Debugf("could not determine root device for AMI %s: %v, using default /dev/sda1", config.DiskImage, err)
-			config.RootDevice = "/dev/sda1"
-		} else {
-			log.Debugf("using root device: %s", device)
-			config.RootDevice = device
-		}
-	}
-
-	if config.RootDevice == "" {
-		config.RootDevice = "/dev/sda1"
+	if err := configureDefaults(ctx, cfg, config, log); err != nil {
+		return nil, err
 	}
 
 	accountID := getCallerAccount(ctx, cfg)
 
-	// create provider
 	provider := &AwsProvider{
 		Config:    config,
 		AwsConfig: cfg,
@@ -103,59 +83,118 @@ func NewProvider(ctx context.Context, withFolder bool, log log.Logger) (*AwsProv
 		accountID: accountID,
 	}
 
-	log.Debugf("AWS provider created successfully")
+	log.Debugf("AWS provider created")
 	return provider, nil
+}
+
+func configureDefaults(ctx context.Context, cfg aws.Config, config *options.Options, log log.Logger) error {
+	isEC2 := isEC2Instance()
+	log.Debugf("running in EC2 instance: %v", isEC2)
+
+	if config.DiskImage == "" && !isEC2 {
+		if err := setDefaultAMI(ctx, cfg, config, log); err != nil {
+			return err
+		}
+	}
+
+	if config.RootDevice == "" && !isEC2 && config.DiskImage != "" {
+		setRootDevice(ctx, cfg, config, log)
+	}
+
+	if config.RootDevice == "" {
+		config.RootDevice = "/dev/sda1"
+	}
+
+	return nil
+}
+
+func setDefaultAMI(ctx context.Context, cfg aws.Config, config *options.Options, log log.Logger) error {
+	log.Debugf("disk image not specified; fetching default AMI for instance type: %s", config.MachineType)
+	image, err := GetDefaultAMI(ctx, cfg, config.MachineType)
+	if err != nil {
+		return err
+	}
+	log.Debugf("using default AMI: %s", image)
+	config.DiskImage = image
+	return nil
+}
+
+func setRootDevice(ctx context.Context, cfg aws.Config, config *options.Options, log log.Logger) {
+	log.Debugf("determining root device for AMI: %s", config.DiskImage)
+	device, err := GetAMIRootDevice(ctx, cfg, config.DiskImage)
+	if err != nil {
+		log.Debugf("could not determine root device for AMI %s: %v, using default /dev/sda1", config.DiskImage, err)
+		config.RootDevice = "/dev/sda1"
+	} else {
+		log.Debugf("using root device: %s", device)
+		config.RootDevice = device
+	}
 }
 
 func NewAWSConfig(ctx context.Context, log log.Logger, options *options.Options) (aws.Config, error) {
 	log.Debugf("configuring AWS SDK for region: %s", options.Zone)
-	var opts []func(*awsConfig.LoadOptions) error
-
-	if options.Zone != "" {
-		opts = append(opts, awsConfig.WithRegion(options.Zone))
-	}
-
-	// Use explicit credentials if provided
-	if options.AccessKeyID != "" && options.SecretAccessKey != "" {
-		log.Debugf("using provided AWS credentials")
-		creds := aws.Credentials{
-			AccessKeyID:     options.AccessKeyID,
-			SecretAccessKey: options.SecretAccessKey,
-			SessionToken:    options.SessionToken,
-		}
-		opts = append(opts, awsConfig.WithCredentialsProvider(credentials.StaticCredentialsProvider{Value: creds}))
-	} else if options.CustomCredentialCommand != "" {
-		log.Debugf("using custom credential command: %s", options.CustomCredentialCommand)
-		var output bytes.Buffer
-		cmd := exec.Command("sh", "-c", options.CustomCredentialCommand)
-		cmd.Stdout = &output
-		cmd.Stderr = log.Writer(logrus.ErrorLevel, true)
-		if err := cmd.Run(); err != nil {
-			return aws.Config{}, fmt.Errorf("run command %q: %w", options.CustomCredentialCommand, err)
-		}
-
-		// parse the JSON output to an aws.Credentials object
-		var creds aws.Credentials
-		if err := json.Unmarshal(output.Bytes(), &creds); err != nil {
-			return aws.Config{}, fmt.Errorf("parse AWS credential JSON output %q: %w", output.Bytes(), err)
-		}
-
-		if creds.AccessKeyID == "" || creds.SecretAccessKey == "" {
-			return aws.Config{}, fmt.Errorf("missing access key id or secret access key in JSON output %q", output.Bytes())
-		}
-
-		// we managed to parse credentials from the external source. Let's use them through a credentials provider
-		opts = append(opts, awsConfig.WithCredentialsProvider(credentials.StaticCredentialsProvider{Value: creds}))
-	} else {
-		log.Debugf("using default AWS credential chain")
-	}
-
+	opts := buildConfigOptions(log, options)
 	cfg, err := awsConfig.LoadDefaultConfig(ctx, opts...)
 	if err != nil {
 		return aws.Config{}, err
 	}
 	log.Debugf("AWS SDK configured")
 	return cfg, nil
+}
+
+func buildConfigOptions(log log.Logger, options *options.Options) []func(*awsConfig.LoadOptions) error {
+	var opts []func(*awsConfig.LoadOptions) error
+
+	if options.Zone != "" {
+		opts = append(opts, awsConfig.WithRegion(options.Zone))
+	}
+
+	if options.AccessKeyID != "" && options.SecretAccessKey != "" {
+		log.Debugf("using provided AWS credentials")
+		opts = append(opts, awsConfig.WithCredentialsProvider(credentials.StaticCredentialsProvider{
+			Value: aws.Credentials{
+				AccessKeyID:     options.AccessKeyID,
+				SecretAccessKey: options.SecretAccessKey,
+				SessionToken:    options.SessionToken,
+			},
+		}))
+	} else if options.CustomCredentialCommand != "" {
+		creds, err := executeCredentialCommand(options.CustomCredentialCommand, log)
+		if err == nil {
+			opts = append(opts, awsConfig.WithCredentialsProvider(credentials.StaticCredentialsProvider{Value: creds}))
+		}
+	} else {
+		profile := os.Getenv("AWS_PROFILE")
+		if profile != "" {
+			log.Debugf("using AWS profile: %s", profile)
+		} else {
+			log.Debugf("using default AWS credential chain")
+		}
+	}
+
+	return opts
+}
+
+func executeCredentialCommand(command string, log log.Logger) (aws.Credentials, error) {
+	log.Debugf("using custom credential command: %s", command)
+	var output bytes.Buffer
+	cmd := exec.Command("sh", "-c", command)
+	cmd.Stdout = &output
+	cmd.Stderr = log.Writer(logrus.ErrorLevel, true)
+	if err := cmd.Run(); err != nil {
+		return aws.Credentials{}, fmt.Errorf("run command %q: %w", command, err)
+	}
+
+	var creds aws.Credentials
+	if err := json.Unmarshal(output.Bytes(), &creds); err != nil {
+		return aws.Credentials{}, fmt.Errorf("parse AWS credential JSON output %q: %w", output.Bytes(), err)
+	}
+
+	if creds.AccessKeyID == "" || creds.SecretAccessKey == "" {
+		return aws.Credentials{}, fmt.Errorf("missing access key id or secret access key in JSON output %q", output.Bytes())
+	}
+
+	return creds, nil
 }
 
 type AwsProvider struct {
@@ -428,7 +467,7 @@ func GetDevpodInstanceProfile(ctx context.Context, provider *AwsProvider) (strin
 	svc := iam.NewFromConfig(provider.AwsConfig)
 
 	roleInput := &iam.GetInstanceProfileInput{
-		InstanceProfileName: aws.String("devpod-ec2-role"),
+		InstanceProfileName: aws.String(devpodIAMResourceName),
 	}
 
 	response, err := svc.GetInstanceProfile(ctx, roleInput)
@@ -463,7 +502,7 @@ func createIAMRole(ctx context.Context, svc *iam.Client) error {
 
 	_, err = svc.CreateRole(ctx, &iam.CreateRoleInput{
 		AssumeRolePolicyDocument: aws.String(string(assumeRolePolicyJSON)),
-		RoleName:                 aws.String("devpod-ec2-role"),
+		RoleName:                 aws.String(devpodIAMResourceName),
 	})
 	if err != nil {
 		var exists *iamtypes.EntityAlreadyExistsException
@@ -484,15 +523,15 @@ func attachRolePolicies(ctx context.Context, svc *iam.Client, kmsArn string) err
 
 	if _, err = svc.PutRolePolicy(ctx, &iam.PutRolePolicyInput{
 		PolicyDocument: aws.String(string(ec2PolicyJSON)),
-		PolicyName:     aws.String("devpod-ec2-policy"),
-		RoleName:       aws.String("devpod-ec2-role"),
+		PolicyName:     aws.String(iamEC2PolicyName),
+		RoleName:       aws.String(devpodIAMResourceName),
 	}); err != nil {
 		return fmt.Errorf("put role policy: %w", err)
 	}
 
 	if _, err = svc.AttachRolePolicy(ctx, &iam.AttachRolePolicyInput{
 		PolicyArn: aws.String("arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"),
-		RoleName:  aws.String("devpod-ec2-role"),
+		RoleName:  aws.String(devpodIAMResourceName),
 	}); err != nil {
 		return fmt.Errorf("attach SSM policy: %w", err)
 	}
@@ -506,8 +545,8 @@ func attachRolePolicies(ctx context.Context, svc *iam.Client, kmsArn string) err
 
 		if _, err = svc.PutRolePolicy(ctx, &iam.PutRolePolicyInput{
 			PolicyDocument: aws.String(string(kmsPolicyJSON)),
-			PolicyName:     aws.String("ssm-kms-decrypt-policy"),
-			RoleName:       aws.String("devpod-ec2-role"),
+			PolicyName:     aws.String(iamSSMKMSDecryptPolicyName),
+			RoleName:       aws.String(devpodIAMResourceName),
 		}); err != nil {
 			return fmt.Errorf("put KMS decrypt policy: %w", err)
 		}
@@ -535,13 +574,13 @@ func createInstanceProfile(ctx context.Context, svc *iam.Client) (string, error)
 
 func createOrGetInstanceProfile(ctx context.Context, svc *iam.Client) (string, error) {
 	response, err := svc.CreateInstanceProfile(ctx, &iam.CreateInstanceProfileInput{
-		InstanceProfileName: aws.String("devpod-ec2-role"),
+		InstanceProfileName: aws.String(devpodIAMResourceName),
 	})
 	if err != nil {
 		var exists *iamtypes.EntityAlreadyExistsException
 		if errors.As(err, &exists) {
 			getResponse, err := svc.GetInstanceProfile(ctx, &iam.GetInstanceProfileInput{
-				InstanceProfileName: aws.String("devpod-ec2-role"),
+				InstanceProfileName: aws.String(devpodIAMResourceName),
 			})
 			if err != nil {
 				return "", fmt.Errorf("get instance profile: %w", err)
@@ -555,8 +594,8 @@ func createOrGetInstanceProfile(ctx context.Context, svc *iam.Client) (string, e
 
 func attachRoleToProfile(ctx context.Context, svc *iam.Client) error {
 	_, err := svc.AddRoleToInstanceProfile(ctx, &iam.AddRoleToInstanceProfileInput{
-		InstanceProfileName: aws.String("devpod-ec2-role"),
-		RoleName:            aws.String("devpod-ec2-role"),
+		InstanceProfileName: aws.String(devpodIAMResourceName),
+		RoleName:            aws.String(devpodIAMResourceName),
 	})
 	if err != nil {
 		var already *iamtypes.EntityAlreadyExistsException
@@ -570,7 +609,7 @@ func attachRoleToProfile(ctx context.Context, svc *iam.Client) error {
 func waitForInstanceProfile(ctx context.Context, svc *iam.Client) error {
 	waiter := iam.NewInstanceProfileExistsWaiter(svc)
 	if err := waiter.Wait(ctx, &iam.GetInstanceProfileInput{
-		InstanceProfileName: aws.String("devpod-ec2-role"),
+		InstanceProfileName: aws.String(devpodIAMResourceName),
 	}, 2*time.Minute); err != nil {
 		return fmt.Errorf("wait for instance profile: %w", err)
 	}
