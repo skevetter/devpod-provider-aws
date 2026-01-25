@@ -401,56 +401,33 @@ func GetDevpodInstanceProfile(ctx context.Context, provider *AwsProvider) (strin
 
 func CreateDevpodInstanceProfile(ctx context.Context, provider *AwsProvider) (string, error) {
 	svc := iam.NewFromConfig(provider.AwsConfig)
-	roleInput := &iam.CreateRoleInput{
-		AssumeRolePolicyDocument: aws.String(`{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Principal": {
-                "Service": "ec2.amazonaws.com"
-            },
-            "Action": "sts:AssumeRole"
-        }
-    ]
-}`),
-		RoleName: aws.String("devpod-ec2-role"),
+
+	assumeRolePolicy := NewEC2AssumeRolePolicy()
+	assumeRolePolicyJSON, err := json.Marshal(assumeRolePolicy)
+	if err != nil {
+		return "", fmt.Errorf("marshal assume role policy: %w", err)
 	}
 
-	_, err := svc.CreateRole(ctx, roleInput)
+	roleInput := &iam.CreateRoleInput{
+		AssumeRolePolicyDocument: aws.String(string(assumeRolePolicyJSON)),
+		RoleName:                 aws.String("devpod-ec2-role"),
+	}
+
+	_, err = svc.CreateRole(ctx, roleInput)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("create IAM role: %w", err)
+	}
+
+	ec2Policy := NewDevPodEC2Policy()
+	ec2PolicyJSON, err := json.Marshal(ec2Policy)
+	if err != nil {
+		return "", fmt.Errorf("marshal EC2 policy: %w", err)
 	}
 
 	policyInput := &iam.PutRolePolicyInput{
-		PolicyDocument: aws.String(`{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "Describe",
-      "Action": [
-        "ec2:DescribeInstances"
-      ],
-      "Effect": "Allow",
-      "Resource": "*"
-    },
-    {
-      "Sid": "Stop",
-      "Action": [
-        "ec2:StopInstances"
-      ],
-      "Effect": "Allow",
-      "Resource": "arn:aws:ec2:*:*:instance/*",
-      "Condition": {
-        "StringLike": {
-          "aws:userid": "*:${ec2:InstanceID}"
-        }
-      }
-    }
-  ]
-}`),
-		PolicyName: aws.String("devpod-ec2-policy"),
-		RoleName:   aws.String("devpod-ec2-role"),
+		PolicyDocument: aws.String(string(ec2PolicyJSON)),
+		PolicyName:     aws.String("devpod-ec2-policy"),
+		RoleName:       aws.String("devpod-ec2-role"),
 	}
 
 	_, err = svc.PutRolePolicy(ctx, policyInput)
@@ -469,22 +446,16 @@ func CreateDevpodInstanceProfile(ctx context.Context, provider *AwsProvider) (st
 	}
 
 	if provider.Config.KmsKeyARNForSessionManager != "" {
+		kmsPolicy := NewSSMKMSDecryptPolicy(provider.Config.KmsKeyARNForSessionManager)
+		kmsPolicyJSON, err := json.Marshal(kmsPolicy)
+		if err != nil {
+			return "", fmt.Errorf("marshal KMS policy: %w", err)
+		}
+
 		kmsDecryptPolicyInput := &iam.PutRolePolicyInput{
-			PolicyDocument: aws.String(fmt.Sprintf(`{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "DecryptSSM",
-      "Action": [
-        "kms:Decrypt"
-      ],
-      "Effect": "Allow",
-      "Resource": "%s"
-    }
-  ]
-}`, provider.Config.KmsKeyARNForSessionManager)),
-			PolicyName: aws.String("ssm-kms-decrypt-policy"),
-			RoleName:   aws.String("devpod-ec2-role"),
+			PolicyDocument: aws.String(string(kmsPolicyJSON)),
+			PolicyName:     aws.String("ssm-kms-decrypt-policy"),
+			RoleName:       aws.String("devpod-ec2-role"),
 		}
 
 		_, err = svc.PutRolePolicy(ctx, kmsDecryptPolicyInput)
