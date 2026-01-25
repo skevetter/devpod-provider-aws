@@ -92,11 +92,14 @@ func NewProvider(ctx context.Context, withFolder bool, log log.Logger) (*AwsProv
 		config.RootDevice = "/dev/sda1"
 	}
 
+	accountID := getCallerAccount(ctx, cfg)
+
 	// create provider
 	provider := &AwsProvider{
 		Config:    config,
 		AwsConfig: cfg,
 		Log:       log,
+		accountID: accountID,
 	}
 
 	log.Debugf("AWS provider created successfully")
@@ -159,16 +162,16 @@ type AwsProvider struct {
 	AwsConfig        aws.Config
 	Log              log.Logger
 	WorkingDirectory string
+	accountID        string
 }
 
 func GetSubnet(ctx context.Context, provider *AwsProvider) (string, error) {
-	account := logOperationStart(ctx, provider.AwsConfig, provider.Log, "GetSubnet")
-	provider.Log.Debugf("op=GetSubnet account=%s vpc=%s az=%s subnets=%v",
-		account, provider.Config.VpcID, provider.Config.AvailabilityZone, provider.Config.SubnetIDs)
+	provider.Log.Debugf("GetSubnet: vpc=%s az=%s subnets=%v",
+		provider.Config.VpcID, provider.Config.AvailabilityZone, provider.Config.SubnetIDs)
 
 	// in case a single subnet ID is specified, use it without further checks
 	if len(provider.Config.SubnetIDs) == 1 {
-		provider.Log.Infof("op=GetSubnet account=%s result=%s source=config", account, provider.Config.SubnetIDs[0])
+		provider.Log.Infof("GetSubnet: using subnet %s", provider.Config.SubnetIDs[0])
 		return provider.Config.SubnetIDs[0], nil
 	}
 
@@ -269,10 +272,8 @@ func GetSubnet(ctx context.Context, provider *AwsProvider) (string, error) {
 }
 
 func GetDevpodVPC(ctx context.Context, provider *AwsProvider) (string, error) {
-	account := logOperationStart(ctx, provider.AwsConfig, provider.Log, "GetDevpodVPC")
-
 	if provider.Config.VpcID != "" {
-		provider.Log.Infof("op=GetDevpodVPC account=%s result=%s source=config", account, provider.Config.VpcID)
+		provider.Log.Infof("GetDevpodVPC: using VPC %s", provider.Config.VpcID)
 		return provider.Config.VpcID, nil
 	}
 
@@ -291,7 +292,7 @@ func GetDevpodVPC(ctx context.Context, provider *AwsProvider) (string, error) {
 	// We need to find a default vpc
 	for _, vpc := range result.Vpcs {
 		if *vpc.IsDefault {
-			provider.Log.Infof("op=GetDevpodVPC account=%s result=%s source=default", account, *vpc.VpcId)
+			provider.Log.Infof("GetDevpodVPC: using VPC %s", *vpc.VpcId)
 			return *vpc.VpcId, nil
 		}
 	}
@@ -378,10 +379,8 @@ func GetAMIRootDevice(ctx context.Context, cfg aws.Config, diskImage string) (st
 }
 
 func GetDevpodInstanceProfile(ctx context.Context, provider *AwsProvider) (string, error) {
-	account := logOperationStart(ctx, provider.AwsConfig, provider.Log, "GetDevpodInstanceProfile")
-
 	if provider.Config.InstanceProfileArn != "" {
-		provider.Log.Infof("op=GetDevpodInstanceProfile account=%s result=%s source=config", account, provider.Config.InstanceProfileArn)
+		provider.Log.Infof("GetDevpodInstanceProfile: using profile %s", provider.Config.InstanceProfileArn)
 		return provider.Config.InstanceProfileArn, nil
 	}
 
@@ -396,7 +395,7 @@ func GetDevpodInstanceProfile(ctx context.Context, provider *AwsProvider) (strin
 		return CreateDevpodInstanceProfile(ctx, provider)
 	}
 
-	provider.Log.Infof("op=GetDevpodInstanceProfile account=%s result=%s source=existing", account, *response.InstanceProfile.Arn)
+	provider.Log.Infof("GetDevpodInstanceProfile: using existing profile %s", *response.InstanceProfile.Arn)
 	return *response.InstanceProfile.Arn, nil
 }
 
@@ -456,7 +455,7 @@ func CreateDevpodInstanceProfile(ctx context.Context, provider *AwsProvider) (st
 
 	_, err = svc.PutRolePolicy(ctx, policyInput)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("put role policy: %w", err)
 	}
 
 	ssmManagedInstanceCorePolicyInput := &iam.AttachRolePolicyInput{
@@ -466,7 +465,7 @@ func CreateDevpodInstanceProfile(ctx context.Context, provider *AwsProvider) (st
 
 	_, err = svc.AttachRolePolicy(ctx, ssmManagedInstanceCorePolicyInput)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("attach SSM policy: %w", err)
 	}
 
 	if provider.Config.KmsKeyARNForSessionManager != "" {
@@ -490,7 +489,7 @@ func CreateDevpodInstanceProfile(ctx context.Context, provider *AwsProvider) (st
 
 		_, err = svc.PutRolePolicy(ctx, kmsDecryptPolicyInput)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("put KMS decrypt policy: %w", err)
 		}
 	}
 
@@ -525,11 +524,9 @@ func CreateDevpodInstanceProfile(ctx context.Context, provider *AwsProvider) (st
 }
 
 func GetDevpodSecurityGroups(ctx context.Context, provider *AwsProvider) ([]string, error) {
-	account := logOperationStart(ctx, provider.AwsConfig, provider.Log, "GetDevpodSecurityGroups")
-
 	if provider.Config.SecurityGroupID != "" {
 		sgs := strings.Split(provider.Config.SecurityGroupID, ",")
-		provider.Log.Infof("op=GetDevpodSecurityGroups account=%s result=%v source=config", account, sgs)
+		provider.Log.Infof("GetDevpodSecurityGroups: using configured groups %v", sgs)
 		return sgs, nil
 	}
 
@@ -562,7 +559,7 @@ func GetDevpodSecurityGroups(ctx context.Context, provider *AwsProvider) ([]stri
 			return nil, err
 		}
 
-		provider.Log.Infof("op=GetDevpodSecurityGroups account=%s result=%v source=created", account, []string{sg})
+		provider.Log.Infof("GetDevpodSecurityGroups: created new group %s", sg)
 		return []string{sg}, nil
 	}
 
@@ -571,7 +568,7 @@ func GetDevpodSecurityGroups(ctx context.Context, provider *AwsProvider) ([]stri
 		sgs = append(sgs, *result.SecurityGroups[res].GroupId)
 	}
 
-	provider.Log.Infof("op=GetDevpodSecurityGroups account=%s result=%v source=existing", account, sgs)
+	provider.Log.Infof("GetDevpodSecurityGroups: using existing groups %v", sgs)
 	return sgs, nil
 }
 
@@ -834,9 +831,7 @@ func Create(
 	cfg aws.Config,
 	providerAws *AwsProvider,
 ) (Machine, error) {
-	account := logOperationStart(ctx, cfg, providerAws.Log, "Create")
-	providerAws.Log.Debugf("op=Create account=%s machine=%s type=%s ami=%s disk=%dGB",
-		account,
+	providerAws.Log.Debugf("Create: machine=%s type=%s ami=%s disk=%dGB",
 		providerAws.Config.MachineID,
 		providerAws.Config.MachineType,
 		providerAws.Config.DiskImage,
@@ -937,15 +932,14 @@ func Create(
 	}
 
 	machine := NewMachineFromInstance(result.Instances[0])
-	providerAws.Log.Infof("op=Create account=%s instance=%s status=completed", account, machine.InstanceID)
+	providerAws.Log.Infof("Create: instance %s created", machine.InstanceID)
 	return machine, nil
 }
 
-func Start(ctx context.Context, cfg aws.Config, log log.Logger, instanceID string) error {
-	account := logOperationStart(ctx, cfg, log, "Start")
-	log.Debugf("op=Start account=%s instance=%s", account, instanceID)
+func Start(ctx context.Context, provider *AwsProvider, instanceID string) error {
+	provider.Log.Debugf("Start: instance=%s", instanceID)
 
-	svc := ec2.NewFromConfig(cfg)
+	svc := ec2.NewFromConfig(provider.AwsConfig)
 
 	input := &ec2.StartInstancesInput{
 		InstanceIds: []string{
@@ -958,15 +952,14 @@ func Start(ctx context.Context, cfg aws.Config, log log.Logger, instanceID strin
 		return fmt.Errorf("start instance: %w", err)
 	}
 
-	log.Infof("op=Start account=%s instance=%s status=completed", account, instanceID)
+	provider.Log.Infof("Start: instance %s started", instanceID)
 	return nil
 }
 
-func Stop(ctx context.Context, cfg aws.Config, log log.Logger, instanceID string) error {
-	account := logOperationStart(ctx, cfg, log, "Stop")
-	log.Debugf("op=Stop account=%s instance=%s", account, instanceID)
+func Stop(ctx context.Context, provider *AwsProvider, instanceID string) error {
+	provider.Log.Debugf("Stop: instance=%s", instanceID)
 
-	svc := ec2.NewFromConfig(cfg)
+	svc := ec2.NewFromConfig(provider.AwsConfig)
 
 	input := &ec2.StopInstancesInput{
 		InstanceIds: []string{
@@ -979,21 +972,20 @@ func Stop(ctx context.Context, cfg aws.Config, log log.Logger, instanceID string
 		return fmt.Errorf("stop instance: %w", err)
 	}
 
-	log.Infof("op=Stop account=%s instance=%s status=completed", account, instanceID)
+	provider.Log.Infof("Stop: instance %s stopped", instanceID)
 	return nil
 }
 
-func Status(ctx context.Context, cfg aws.Config, log log.Logger, name string) (client.Status, error) {
-	account := logOperationStart(ctx, cfg, log, "Status")
-	log.Debugf("op=Status account=%s machine=%s", account, name)
+func Status(ctx context.Context, provider *AwsProvider, name string) (client.Status, error) {
+	provider.Log.Debugf("Status: machine=%s", name)
 
-	result, err := GetDevpodInstance(ctx, cfg, name)
+	result, err := GetDevpodInstance(ctx, provider.AwsConfig, name)
 	if err != nil {
 		return client.StatusNotFound, fmt.Errorf("get instance: %w", err)
 	}
 
 	if result.Status == "" {
-		log.Infof("op=Status account=%s machine=%s result=not_found", account, name)
+		provider.Log.Infof("Status: machine %s not found", name)
 		return client.StatusNotFound, nil
 	}
 
@@ -1005,19 +997,18 @@ func Status(ctx context.Context, cfg aws.Config, log log.Logger, name string) (c
 	case "stopped":
 		clientStatus = client.StatusStopped
 	case "terminated":
-		log.Infof("op=Status account=%s machine=%s result=terminated", account, name)
+		provider.Log.Infof("Status: machine %s terminated", name)
 		return client.StatusNotFound, nil
 	default:
 		clientStatus = client.StatusBusy
 	}
 
-	log.Infof("op=Status account=%s machine=%s result=%s", account, name, status)
+	provider.Log.Infof("Status: machine %s is %s", name, status)
 	return clientStatus, nil
 }
 
 func Delete(ctx context.Context, provider *AwsProvider, machine Machine) error {
-	account := logOperationStart(ctx, provider.AwsConfig, provider.Log, "Delete")
-	provider.Log.Debugf("op=Delete account=%s instance=%s", account, machine.InstanceID)
+	provider.Log.Debugf("Delete: instance=%s", machine.InstanceID)
 
 	svc := ec2.NewFromConfig(provider.AwsConfig)
 
@@ -1055,7 +1046,7 @@ func Delete(ctx context.Context, provider *AwsProvider, machine Machine) error {
 		}
 	}
 
-	provider.Log.Infof("op=Delete account=%s instance=%s status=completed", account, machine.InstanceID)
+	provider.Log.Infof("Delete: instance %s terminated", machine.InstanceID)
 	return nil
 }
 
@@ -1095,10 +1086,10 @@ func logCallerIdentity(ctx context.Context, cfg aws.Config, logs log.Logger) err
 		return err
 	}
 
-	logs.Debugf("AWS Caller Identity Account: %s, ARN: %s, UserID: %s",
+	logs.Infof("AWS Provider initialized - Account: %s, Region: %s, ARN: %s",
 		aws.ToString(result.Account),
-		aws.ToString(result.Arn),
-		aws.ToString(result.UserId))
+		cfg.Region,
+		aws.ToString(result.Arn))
 	return nil
 }
 
@@ -1110,11 +1101,4 @@ func getCallerAccount(ctx context.Context, cfg aws.Config) string {
 		return "unknown"
 	}
 	return aws.ToString(result.Account)
-}
-
-// logOperationStart logs the start of an AWS operation with identity context
-func logOperationStart(ctx context.Context, cfg aws.Config, logs log.Logger, operation string) string {
-	account := getCallerAccount(ctx, cfg)
-	logs.Infof("op=%s account=%s region=%s", operation, account, cfg.Region)
-	return account
 }

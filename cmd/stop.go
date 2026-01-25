@@ -54,7 +54,7 @@ func (cmd *StopCmd) Run(
 	}
 
 	if instances.Status != "" {
-		err = aws.Stop(ctx, providerAws.AwsConfig, providerAws.Log, instances.InstanceID)
+		err = aws.Stop(ctx, providerAws, instances.InstanceID)
 		if err != nil {
 			return err
 		}

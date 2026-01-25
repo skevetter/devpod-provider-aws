@@ -58,7 +58,7 @@ func (cmd *StatusCmd) Run(
 	machine *provider.Machine,
 	logs log.Logger,
 ) error {
-	status, err := aws.Status(ctx, providerAws.AwsConfig, providerAws.Log, providerAws.Config.MachineID)
+	status, err := aws.Status(ctx, providerAws, providerAws.Config.MachineID)
 	if err != nil {
 		return err
 	}
