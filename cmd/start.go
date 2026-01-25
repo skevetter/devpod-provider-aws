@@ -54,7 +54,7 @@ func (cmd *StartCmd) Run(
 	}
 
 	if instance.Status != "" {
-		err = aws.Start(ctx, providerAws.AwsConfig, instance.InstanceID)
+		err = aws.Start(ctx, providerAws.AwsConfig, providerAws.Log, instance.InstanceID)
 		if err != nil {
 			return err
 		}
