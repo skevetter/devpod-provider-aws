@@ -23,7 +23,6 @@ func NewInitCmd() *cobra.Command {
 			return cmd.Run(
 				context.Background(),
 				getMachineProviderFromEnv(),
-				log.Default,
 			)
 		},
 	}
@@ -35,14 +34,13 @@ func NewInitCmd() *cobra.Command {
 func (cmd *InitCmd) Run(
 	ctx context.Context,
 	machine *provider.Machine,
-	logs log.Logger,
 ) error {
 	config, err := options.FromEnv(true, false)
 	if err != nil {
 		return err
 	}
 
-	_, err = aws.NewAWSConfig(ctx, logs, config)
+	_, err = aws.NewAWSConfig(ctx, log.Default, config)
 	if err != nil {
 		return err
 	}

@@ -35,7 +35,6 @@ func NewCommandCmd() *cobra.Command {
 				context.Background(),
 				awsProvider,
 				getMachineProviderFromEnv(),
-				log.Default,
 			)
 		},
 	}
@@ -48,7 +47,6 @@ func (cmd *CommandCmd) Run(
 	ctx context.Context,
 	providerAws *aws.AwsProvider,
 	machine *provider.Machine,
-	logs log.Logger,
 ) error {
 	command := os.Getenv("COMMAND")
 	if command == "" {
@@ -152,7 +150,7 @@ func (cmd *CommandCmd) Run(
 
 		client, err := ssh.NewSSHClient("devpod", addr, privateKey)
 		if err != nil {
-			logs.Debugf("error connecting by session manager: %v", err)
+			providerAws.Log.Debugf("error connecting by session manager: %v", err)
 			return err
 		}
 
@@ -163,7 +161,7 @@ func (cmd *CommandCmd) Run(
 	host := instance.Host()
 	sshClient, err := ssh.NewSSHClient("devpod", host+":22", privateKey)
 	if err != nil {
-		logs.Debugf("error connecting to ip [%s]: %v", host, err)
+		providerAws.Log.Debugf("error connecting to ip [%s]: %v", host, err)
 		return err
 	} else {
 		// successfully connected to the public ip

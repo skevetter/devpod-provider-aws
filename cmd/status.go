@@ -43,7 +43,6 @@ func NewStatusCmd() *cobra.Command {
 				context.Background(),
 				awsProvider,
 				getMachineProviderFromEnv(),
-				log.Default,
 			)
 		},
 	}
@@ -56,7 +55,6 @@ func (cmd *StatusCmd) Run(
 	ctx context.Context,
 	providerAws *aws.AwsProvider,
 	machine *provider.Machine,
-	logs log.Logger,
 ) error {
 	status, err := aws.Status(ctx, providerAws, providerAws.Config.MachineID)
 	if err != nil {

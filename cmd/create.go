@@ -28,7 +28,6 @@ func NewCreateCmd() *cobra.Command {
 				context.Background(),
 				awsProvider,
 				getMachineProviderFromEnv(),
-				log.Default,
 			)
 		},
 	}
@@ -41,9 +40,7 @@ func (cmd *CreateCmd) Run(
 	ctx context.Context,
 	providerAws *aws.AwsProvider,
 	machine *provider.Machine,
-	logs log.Logger,
 ) error {
-	// Ensure DevPod security group is created
 	_, err := aws.GetDevpodSecurityGroups(ctx, providerAws)
 	if err != nil {
 		return err

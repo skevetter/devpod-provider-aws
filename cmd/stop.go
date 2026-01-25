@@ -29,7 +29,6 @@ func NewStopCmd() *cobra.Command {
 				context.Background(),
 				awsProvider,
 				getMachineProviderFromEnv(),
-				log.Default,
 			)
 		},
 	}
@@ -42,7 +41,6 @@ func (cmd *StopCmd) Run(
 	ctx context.Context,
 	providerAws *aws.AwsProvider,
 	machine *provider.Machine,
-	logs log.Logger,
 ) error {
 	instances, err := aws.GetDevpodRunningInstance(
 		ctx,

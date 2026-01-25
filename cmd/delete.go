@@ -29,7 +29,6 @@ func NewDeleteCmd() *cobra.Command {
 				context.Background(),
 				awsProvider,
 				getMachineProviderFromEnv(),
-				log.Default,
 			)
 		},
 	}
@@ -42,7 +41,6 @@ func (cmd *DeleteCmd) Run(
 	ctx context.Context,
 	providerAws *aws.AwsProvider,
 	machine *provider.Machine,
-	logs log.Logger,
 ) error {
 	instance, err := aws.GetDevpodInstance(
 		ctx,
