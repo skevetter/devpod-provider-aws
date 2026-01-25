@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/skevetter/devpod/pkg/provider"
 	"github.com/skevetter/log"
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh"
@@ -65,4 +66,16 @@ func BuildRoot() *cobra.Command {
 	rootCmd.AddCommand(NewStatusCmd())
 
 	return rootCmd
+}
+
+// getMachineProviderFromEnv creates a Machine from environment variables
+func getMachineProviderFromEnv() *provider.Machine {
+	return &provider.Machine{
+		ID:     os.Getenv(provider.MACHINE_ID),
+		Origin: os.Getenv(provider.MACHINE_FOLDER),
+		Provider: provider.MachineProviderConfig{
+			Name: os.Getenv(provider.MACHINE_PROVIDER),
+		},
+		Context: os.Getenv(provider.MACHINE_CONTEXT),
+	}
 }

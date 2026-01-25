@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"github.com/skevetter/devpod-provider-aws/pkg/aws"
+	"github.com/skevetter/devpod-provider-aws/pkg/options"
 	"github.com/skevetter/devpod/pkg/provider"
 	"github.com/skevetter/devpod/pkg/ssh"
 	"github.com/skevetter/log"
 	"github.com/spf13/cobra"
+	gossh "golang.org/x/crypto/ssh"
 )
 
 // CommandCmd holds the cmd flags
@@ -53,156 +55,222 @@ func (cmd *CommandCmd) Run(
 		return fmt.Errorf("command environment variable is missing")
 	}
 
-	// get private key
 	privateKey, err := ssh.GetPrivateKeyRawBase(providerAws.Config.MachineFolder)
 	if err != nil {
 		return fmt.Errorf("load private key: %w", err)
 	}
 
-	// get instance
-	instance, err := aws.GetDevpodRunningInstance(
-		ctx,
-		providerAws.AwsConfig,
-		providerAws.Config.MachineID,
-	)
+	instance, err := aws.GetDevpodRunningInstance(ctx, providerAws.AwsConfig, providerAws.Config.MachineID)
 	if err != nil {
 		return err
-	} else if instance.Status == "" {
+	}
+	if instance.Status == "" {
 		return fmt.Errorf("instance %s doesn't exist", providerAws.Config.MachineID)
 	}
 
-	if providerAws.Config.UseInstanceConnectEndpoint {
-		endpointID := providerAws.Config.InstanceConnectEndpointID
+	strategy := cmd.selectStrategy(providerAws.Config)
+	defer func() { _ = strategy.Close() }()
 
-		var err error
-		port, err := findAvailablePort()
-		if err != nil {
-			return err
-		}
-		portStr := strconv.Itoa(port)
-		addr := "localhost:" + portStr
-		cancelCtx, cancel := context.WithCancel(ctx)
-		defer cancel()
-		connectArgs := []string{
-			"ec2-instance-connect",
-			"open-tunnel",
-			"--instance-id", instance.InstanceID,
-			"--local-port", portStr,
-		}
-		if endpointID != "" {
-			connectArgs = append(connectArgs, "--instance-connect-endpoint-id", endpointID)
-		}
-		cmd := exec.CommandContext(cancelCtx, "aws", connectArgs...)
-		// open tunnel in background
-		if err = cmd.Start(); err != nil {
-			return fmt.Errorf("start tunnel: %w", err)
-		}
-		defer func() {
-			err = cmd.Process.Kill()
-		}()
-
-		timeoutCtx, cancelFn := context.WithTimeout(ctx, 30*time.Second)
-		defer cancelFn()
-		waitForPort(timeoutCtx, addr)
-
-		client, err := ssh.NewSSHClient("devpod", addr, privateKey)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = client.Close() }()
-
-		err = ssh.Run(ctx, client, command, os.Stdin, os.Stdout, os.Stderr, nil)
-		if err != nil {
-			return err
-		}
-
-		return err
-	}
-
-	// try session manager
-	if providerAws.Config.UseSessionManager {
-		cancelCtx, cancel := context.WithCancel(ctx)
-		defer cancel()
-
-		var err error
-		port, err := findAvailablePort()
-		if err != nil {
-			return err
-		}
-
-		addr := fmt.Sprintf("localhost:%d", port)
-		connectArgs, err := aws.CommandArgsSSMTunneling(instance.InstanceID, port)
-		if err != nil {
-			return err
-		}
-
-		cmd := exec.CommandContext(cancelCtx, "aws", connectArgs...)
-		// open tunnel in background
-		if err = cmd.Start(); err != nil {
-			return fmt.Errorf("start tunnel: %w", err)
-		}
-		defer func() {
-			err = cmd.Process.Kill()
-		}()
-		timeoutCtx, cancelFn := context.WithTimeout(ctx, 30*time.Second)
-		defer cancelFn()
-		waitForPort(timeoutCtx, addr)
-
-		client, err := ssh.NewSSHClient("devpod", addr, privateKey)
-		if err != nil {
-			providerAws.Log.Debugf("error connecting by session manager: %v", err)
-			return err
-		}
-
-		defer func() { _ = client.Close() }()
-		return ssh.Run(ctx, client, command, os.Stdin, os.Stdout, os.Stderr, nil)
-	}
-
-	host := instance.Host()
-	sshClient, err := ssh.NewSSHClient("devpod", host+":22", privateKey)
+	client, err := strategy.Connect(ctx, &instance, privateKey)
 	if err != nil {
-		providerAws.Log.Debugf("error connecting to ip [%s]: %v", host, err)
 		return err
-	} else {
-		// successfully connected to the public ip
-		defer func() { _ = sshClient.Close() }()
-		return ssh.Run(ctx, sshClient, command, os.Stdin, os.Stdout, os.Stderr, nil)
 	}
+
+	return ssh.Run(ctx, client, command, os.Stdin, os.Stdout, os.Stderr, nil)
 }
 
-func waitForPort(ctx context.Context, addr string) {
+// ConnectionStrategy defines how to connect to an EC2 instance
+type ConnectionStrategy interface {
+	Connect(ctx context.Context, instance *aws.Machine, privateKey []byte) (*gossh.Client, error)
+	Close() error
+	Name() string
+}
+
+// baseTunnelStrategy provides common tunnel + SSH client management
+type baseTunnelStrategy struct {
+	tunnel *TunnelManager
+	client *gossh.Client
+	name   string
+}
+
+func (s *baseTunnelStrategy) Close() error {
+	if s.client != nil {
+		_ = s.client.Close()
+	}
+	if s.tunnel != nil {
+		return s.tunnel.Close()
+	}
+	return nil
+}
+
+func (s *baseTunnelStrategy) Name() string {
+	return s.name
+}
+
+// DirectSSHStrategy connects via direct SSH
+type DirectSSHStrategy struct {
+	client *gossh.Client
+}
+
+func (s *DirectSSHStrategy) Connect(ctx context.Context, instance *aws.Machine, privateKey []byte) (*gossh.Client, error) {
+	host := instance.Host()
+	client, err := ssh.NewSSHClient("devpod", host+":22", privateKey)
+	if err != nil {
+		return nil, fmt.Errorf("direct ssh to %s: %w", host, err)
+	}
+	s.client = client
+	return client, nil
+}
+
+func (s *DirectSSHStrategy) Close() error {
+	if s.client != nil {
+		return s.client.Close()
+	}
+	return nil
+}
+
+func (s *DirectSSHStrategy) Name() string {
+	return "direct-ssh"
+}
+
+// InstanceConnectStrategy connects via EC2 Instance Connect
+type InstanceConnectStrategy struct {
+	baseTunnelStrategy
+	endpointID string
+}
+
+func (s *InstanceConnectStrategy) Connect(ctx context.Context, instance *aws.Machine, privateKey []byte) (*gossh.Client, error) {
+	s.name = "instance-connect"
+
+	port, err := findAvailablePort()
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", s.name, err)
+	}
+
+	args := []string{"ec2-instance-connect", "open-tunnel", "--instance-id", instance.InstanceID, "--local-port", strconv.Itoa(port)}
+	if s.endpointID != "" {
+		args = append(args, "--instance-connect-endpoint-id", s.endpointID)
+	}
+
+	s.tunnel = &TunnelManager{port: port}
+	if err := s.tunnel.Start(ctx, args); err != nil {
+		return nil, fmt.Errorf("%s: %w", s.name, err)
+	}
+
+	client, err := ssh.NewSSHClient("devpod", s.tunnel.Address(), privateKey)
+	if err != nil {
+		_ = s.tunnel.Close()
+		return nil, fmt.Errorf("%s: ssh connect: %w", s.name, err)
+	}
+	s.client = client
+	return client, nil
+}
+
+// SessionManagerStrategy connects via AWS Session Manager
+type SessionManagerStrategy struct {
+	baseTunnelStrategy
+}
+
+func (s *SessionManagerStrategy) Connect(ctx context.Context, instance *aws.Machine, privateKey []byte) (*gossh.Client, error) {
+	s.name = "session-manager"
+
+	port, err := findAvailablePort()
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", s.name, err)
+	}
+
+	args, err := aws.CommandArgsSSMTunneling(instance.InstanceID, port)
+	if err != nil {
+		return nil, fmt.Errorf("%s: build args: %w", s.name, err)
+	}
+
+	s.tunnel = &TunnelManager{port: port}
+	if err := s.tunnel.Start(ctx, args); err != nil {
+		return nil, fmt.Errorf("%s: %w", s.name, err)
+	}
+
+	client, err := ssh.NewSSHClient("devpod", s.tunnel.Address(), privateKey)
+	if err != nil {
+		_ = s.tunnel.Close()
+		return nil, fmt.Errorf("%s: ssh connect: %w", s.name, err)
+	}
+	s.client = client
+	return client, nil
+}
+
+// TunnelManager manages AWS CLI tunnel processes
+type TunnelManager struct {
+	cmd    *exec.Cmd
+	port   int
+	cancel context.CancelFunc
+}
+
+func (t *TunnelManager) Start(ctx context.Context, args []string) error {
+	cancelCtx, cancel := context.WithCancel(ctx)
+	t.cancel = cancel
+	t.cmd = exec.CommandContext(cancelCtx, "aws", args...)
+	if err := t.cmd.Start(); err != nil {
+		cancel()
+		return fmt.Errorf("start tunnel: %w", err)
+	}
+
+	timeoutCtx, cancelFn := context.WithTimeout(ctx, 30*time.Second)
+	defer cancelFn()
+
+	if err := waitForPort(timeoutCtx, t.Address()); err != nil {
+		_ = t.Close()
+		return fmt.Errorf("tunnel port not ready: %w", err)
+	}
+	return nil
+}
+
+func (t *TunnelManager) Address() string {
+	return fmt.Sprintf("localhost:%d", t.port)
+}
+
+func (t *TunnelManager) Close() error {
+	if t.cancel != nil {
+		t.cancel()
+	}
+	if t.cmd != nil && t.cmd.Process != nil {
+		return t.cmd.Process.Kill()
+	}
+	return nil
+}
+
+// selectStrategy chooses the appropriate connection strategy based on config
+func (cmd *CommandCmd) selectStrategy(config *options.Options) ConnectionStrategy {
+	if config.UseInstanceConnectEndpoint {
+		return &InstanceConnectStrategy{endpointID: config.InstanceConnectEndpointID}
+	}
+	if config.UseSessionManager {
+		return &SessionManagerStrategy{}
+	}
+	return &DirectSSHStrategy{}
+}
+
+func waitForPort(ctx context.Context, addr string) error {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
-			return
-		default:
-			l, err := net.Listen("tcp", addr)
-			if err != nil {
-				// port is taken
-				return
+			return fmt.Errorf("timeout waiting for port %s", addr)
+		case <-ticker.C:
+			conn, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+			if err == nil {
+				_ = conn.Close()
+				return nil
 			}
-			_ = l.Close()
-			time.Sleep(1 * time.Second)
 		}
-	}
-
-}
-
-func getMachineProviderFromEnv() *provider.Machine {
-	return &provider.Machine{
-		ID:     os.Getenv(provider.MACHINE_ID),
-		Origin: os.Getenv(provider.MACHINE_FOLDER),
-		Provider: provider.MachineProviderConfig{
-			Name: os.Getenv(provider.MACHINE_PROVIDER),
-		},
-		Context: os.Getenv(provider.MACHINE_CONTEXT),
 	}
 }
 
 func findAvailablePort() (int, error) {
 	l, err := net.Listen("tcp", ":0")
 	if err != nil {
-		return -1, err
+		return 0, fmt.Errorf("find available port: %w", err)
 	}
 	defer func() { _ = l.Close() }()
 
