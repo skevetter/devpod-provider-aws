@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -24,7 +25,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
-	"github.com/pkg/errors"
 	"github.com/skevetter/devpod-provider-aws/pkg/options"
 	"github.com/skevetter/devpod/pkg/client"
 	"github.com/skevetter/devpod/pkg/ssh"
@@ -291,7 +291,7 @@ func discoverSubnet(ctx context.Context, svc *ec2.Client, vpcID, az string, log 
 	}
 
 	if vpcID == "" {
-		return "", errors.New("could not find a suitable subnet. Please either specify a subnet ID or VPC ID, or tag the desired subnets with devpod=devpod")
+		return "", fmt.Errorf("could not find a suitable subnet. Please either specify a subnet ID or VPC ID, or tag the desired subnets with devpod=devpod")
 	}
 
 	return "", fmt.Errorf("no suitable subnet found in VPC %q. Please specify a subnet ID or tag subnets with devpod=devpod", vpcID)
@@ -373,7 +373,7 @@ func GetDevpodVPC(ctx context.Context, provider *AwsProvider) (string, error) {
 	}
 
 	if len(result.Vpcs) == 0 {
-		return "", errors.New("There are no VPCs to associate with")
+		return "", fmt.Errorf("there are no VPCs to associate with")
 	}
 
 	// We need to find a default vpc

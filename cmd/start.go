@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/pkg/errors"
 	"github.com/skevetter/devpod-provider-aws/pkg/aws"
 	"github.com/skevetter/devpod/pkg/provider"
 	"github.com/skevetter/log"
@@ -57,7 +57,7 @@ func (cmd *StartCmd) Run(
 			return err
 		}
 	} else {
-		return errors.Errorf("No stopped instance %s found", providerAws.Config.MachineID)
+		return fmt.Errorf("no stopped instance %s found", providerAws.Config.MachineID)
 	}
 
 	return nil
