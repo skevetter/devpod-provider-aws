@@ -169,106 +169,128 @@ func GetSubnet(ctx context.Context, provider *AwsProvider) (string, error) {
 	provider.Log.Debugf("GetSubnet: vpc=%s az=%s subnets=%v",
 		provider.Config.VpcID, provider.Config.AvailabilityZone, provider.Config.SubnetIDs)
 
-	// in case a single subnet ID is specified, use it without further checks
 	if len(provider.Config.SubnetIDs) == 1 {
-		provider.Log.Infof("GetSubnet: using subnet %s", provider.Config.SubnetIDs[0])
+		provider.Log.Infof("GetSubnet: using configured subnet %s", provider.Config.SubnetIDs[0])
 		return provider.Config.SubnetIDs[0], nil
 	}
 
 	svc := ec2.NewFromConfig(provider.AwsConfig)
-	// in case multiple subnet IDs are specified, we return the one with most free IPs
+
 	if len(provider.Config.SubnetIDs) > 1 {
-		provider.Log.Debugf("selecting subnet from %d specified subnets", len(provider.Config.SubnetIDs))
-		subnets, err := svc.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
-			SubnetIds: provider.Config.SubnetIDs,
-		})
-		if err != nil {
-			return "", fmt.Errorf("list specified subnets %q: %w", provider.Config.SubnetIDs, err)
-		}
-		if len(subnets.Subnets) == 0 {
-			return "", fmt.Errorf("no subnets found with IDs %q", provider.Config.SubnetIDs)
-		}
-		var maxIPCount int32
-		var subnet *types.Subnet
-		for _, s := range subnets.Subnets {
-			if provider.Config.AvailabilityZone != "" && *s.AvailabilityZone != provider.Config.AvailabilityZone {
-				continue
-			}
-			if *s.AvailableIpAddressCount > maxIPCount {
-				maxIPCount = *s.AvailableIpAddressCount
-				subnet = &s
-			}
-		}
+		return selectFromSpecifiedSubnets(ctx, svc, provider.Config.SubnetIDs, provider.Config.AvailabilityZone, provider.Log)
+	}
 
-		if subnet == nil {
-			if provider.Config.AvailabilityZone == "" {
-				return "", fmt.Errorf("no subnets found with IDs %q", provider.Config.SubnetIDs)
-			} else {
-				return "", fmt.Errorf("no subnets found with IDs %q in availability zone %q", provider.Config.SubnetIDs, provider.Config.AvailabilityZone)
-			}
-		}
+	return discoverSubnet(ctx, svc, provider.Config.VpcID, provider.Config.AvailabilityZone, provider.Log)
+}
 
-		provider.Log.Infof("selected subnet %s with %d available IPs", *subnet.SubnetId, maxIPCount)
+func selectFromSpecifiedSubnets(ctx context.Context, svc *ec2.Client, subnetIDs []string, az string, log log.Logger) (string, error) {
+	log.Debugf("selecting subnet from %d specified subnets", len(subnetIDs))
+	subnets, err := svc.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{SubnetIds: subnetIDs})
+	if err != nil {
+		return "", fmt.Errorf("list specified subnets %q: %w", subnetIDs, err)
+	}
+	if len(subnets.Subnets) == 0 {
+		return "", fmt.Errorf("no subnets found with IDs %q", subnetIDs)
+	}
+
+	subnet := selectSubnetWithMostIPs(subnets.Subnets, az)
+	if subnet == nil {
+		if az == "" {
+			return "", fmt.Errorf("no subnets found with IDs %q", subnetIDs)
+		}
+		return "", fmt.Errorf("no subnets found with IDs %q in availability zone %q", subnetIDs, az)
+	}
+
+	log.Infof("selected subnet %s with %d available IPs", *subnet.SubnetId, *subnet.AvailableIpAddressCount)
+	return *subnet.SubnetId, nil
+}
+
+func selectSubnetWithMostIPs(subnets []types.Subnet, az string) *types.Subnet {
+	var maxIPCount int32
+	var selected *types.Subnet
+	for _, s := range subnets {
+		if az != "" && *s.AvailabilityZone != az {
+			continue
+		}
+		if *s.AvailableIpAddressCount > maxIPCount {
+			maxIPCount = *s.AvailableIpAddressCount
+			selected = &s
+		}
+	}
+	return selected
+}
+
+func discoverSubnet(ctx context.Context, svc *ec2.Client, vpcID, az string, log log.Logger) (string, error) {
+	log.Infof("searching for suitable subnet")
+	subnets, err := listAllSubnets(ctx, svc, az)
+	if err != nil {
+		return "", err
+	}
+
+	if subnet := findTaggedDevPodSubnet(subnets); subnet != nil {
+		log.Debugf("found tagged subnet %s with %d available IPs", *subnet.SubnetId, *subnet.AvailableIpAddressCount)
 		return *subnet.SubnetId, nil
 	}
 
-	provider.Log.Infof("searching for suitable subnet")
-	// retrieve and index all visible subnets
-	input := &ec2.DescribeSubnetsInput{}
-	if provider.Config.AvailabilityZone != "" {
-		input.Filters = []types.Filter{
-			{
-				Name: aws.String("availability-zone"),
-				Values: []string{
-					provider.Config.AvailabilityZone,
-				},
-			},
-		}
-	}
-	p := ec2.NewDescribeSubnetsPaginator(svc, input)
-	var taggedSubnetMaxIPCount, vpcedSubnetMaxIPCount int32
-	var taggedSubnet, vpcedSubnet *types.Subnet
-	for p.HasMorePages() {
-		page, err := p.NextPage(ctx)
-		if err != nil {
-			return "", fmt.Errorf("list all subnets: %w", err)
-		}
-
-		for _, s := range page.Subnets {
-			for _, tag := range s.Tags {
-				if *tag.Key == "devpod" && *tag.Value == "devpod" {
-					if *s.AvailableIpAddressCount > taggedSubnetMaxIPCount {
-						taggedSubnetMaxIPCount = *s.AvailableIpAddressCount
-						taggedSubnet = &s
-					}
-				}
-			}
-			if provider.Config.VpcID != "" && *s.VpcId == provider.Config.VpcID &&
-				*s.AvailableIpAddressCount > vpcedSubnetMaxIPCount &&
-				*s.MapPublicIpOnLaunch {
-				vpcedSubnetMaxIPCount = *s.AvailableIpAddressCount
-				vpcedSubnet = &s
-			}
-		}
+	if subnet := findVPCPublicSubnet(subnets, vpcID); subnet != nil {
+		log.Debugf("found VPC subnet %s with %d available IPs", *subnet.SubnetId, *subnet.AvailableIpAddressCount)
+		return *subnet.SubnetId, nil
 	}
 
-	// if we found tagged subnets, we return the one with the most free IPs
-	if taggedSubnet != nil {
-		provider.Log.Debugf("found tagged subnet %s with %d available IPs", *taggedSubnet.SubnetId, taggedSubnetMaxIPCount)
-		return *taggedSubnet.SubnetId, nil
-	}
-
-	// we found no tagged subnet so far. If a VPC is specified, we search for a subnet with the most free IPs that can do also public-ipv4
-	if vpcedSubnet != nil {
-		provider.Log.Debugf("found VPC subnet %s with %d available IPs", *vpcedSubnet.SubnetId, vpcedSubnetMaxIPCount)
-		return *vpcedSubnet.SubnetId, nil
-	}
-
-	if provider.Config.VpcID == "" {
+	if vpcID == "" {
 		return "", errors.New("could not find a suitable subnet. Please either specify a subnet ID or VPC ID, or tag the desired subnets with devpod=devpod")
 	}
 
-	return "", fmt.Errorf("no suitable subnet found in VPC %q. Please specify a subnet ID or tag subnets with devpod=devpod", provider.Config.VpcID)
+	return "", fmt.Errorf("no suitable subnet found in VPC %q. Please specify a subnet ID or tag subnets with devpod=devpod", vpcID)
+}
+
+func listAllSubnets(ctx context.Context, svc *ec2.Client, az string) ([]types.Subnet, error) {
+	input := &ec2.DescribeSubnetsInput{}
+	if az != "" {
+		input.Filters = []types.Filter{{Name: aws.String("availability-zone"), Values: []string{az}}}
+	}
+
+	var subnets []types.Subnet
+	p := ec2.NewDescribeSubnetsPaginator(svc, input)
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("list all subnets: %w", err)
+		}
+		subnets = append(subnets, page.Subnets...)
+	}
+	return subnets, nil
+}
+
+func findTaggedDevPodSubnet(subnets []types.Subnet) *types.Subnet {
+	var maxIPCount int32
+	var selected *types.Subnet
+	for _, s := range subnets {
+		for _, tag := range s.Tags {
+			if *tag.Key == "devpod" && *tag.Value == "devpod" {
+				if *s.AvailableIpAddressCount > maxIPCount {
+					maxIPCount = *s.AvailableIpAddressCount
+					selected = &s
+				}
+			}
+		}
+	}
+	return selected
+}
+
+func findVPCPublicSubnet(subnets []types.Subnet, vpcID string) *types.Subnet {
+	if vpcID == "" {
+		return nil
+	}
+	var maxIPCount int32
+	var selected *types.Subnet
+	for _, s := range subnets {
+		if *s.VpcId == vpcID && *s.MapPublicIpOnLaunch && *s.AvailableIpAddressCount > maxIPCount {
+			maxIPCount = *s.AvailableIpAddressCount
+			selected = &s
+		}
+	}
+	return selected
 }
 
 func GetDevpodVPC(ctx context.Context, provider *AwsProvider) (string, error) {
@@ -402,88 +424,87 @@ func GetDevpodInstanceProfile(ctx context.Context, provider *AwsProvider) (strin
 func CreateDevpodInstanceProfile(ctx context.Context, provider *AwsProvider) (string, error) {
 	svc := iam.NewFromConfig(provider.AwsConfig)
 
+	if err := createIAMRole(ctx, svc); err != nil {
+		return "", err
+	}
+
+	if err := attachRolePolicies(ctx, svc, provider.Config.KmsKeyARNForSessionManager); err != nil {
+		return "", err
+	}
+
+	return createInstanceProfile(ctx, svc)
+}
+
+func createIAMRole(ctx context.Context, svc *iam.Client) error {
 	assumeRolePolicy := NewEC2AssumeRolePolicy()
 	assumeRolePolicyJSON, err := json.Marshal(assumeRolePolicy)
 	if err != nil {
-		return "", fmt.Errorf("marshal assume role policy: %w", err)
+		return fmt.Errorf("marshal assume role policy: %w", err)
 	}
 
-	roleInput := &iam.CreateRoleInput{
+	_, err = svc.CreateRole(ctx, &iam.CreateRoleInput{
 		AssumeRolePolicyDocument: aws.String(string(assumeRolePolicyJSON)),
 		RoleName:                 aws.String("devpod-ec2-role"),
-	}
+	})
+	return err
+}
 
-	_, err = svc.CreateRole(ctx, roleInput)
-	if err != nil {
-		return "", fmt.Errorf("create IAM role: %w", err)
-	}
-
+func attachRolePolicies(ctx context.Context, svc *iam.Client, kmsArn string) error {
 	ec2Policy := NewDevPodEC2Policy()
 	ec2PolicyJSON, err := json.Marshal(ec2Policy)
 	if err != nil {
-		return "", fmt.Errorf("marshal EC2 policy: %w", err)
+		return fmt.Errorf("marshal EC2 policy: %w", err)
 	}
 
-	policyInput := &iam.PutRolePolicyInput{
+	if _, err = svc.PutRolePolicy(ctx, &iam.PutRolePolicyInput{
 		PolicyDocument: aws.String(string(ec2PolicyJSON)),
 		PolicyName:     aws.String("devpod-ec2-policy"),
 		RoleName:       aws.String("devpod-ec2-role"),
+	}); err != nil {
+		return fmt.Errorf("put role policy: %w", err)
 	}
 
-	_, err = svc.PutRolePolicy(ctx, policyInput)
-	if err != nil {
-		return "", fmt.Errorf("put role policy: %w", err)
-	}
-
-	ssmManagedInstanceCorePolicyInput := &iam.AttachRolePolicyInput{
+	if _, err = svc.AttachRolePolicy(ctx, &iam.AttachRolePolicyInput{
 		PolicyArn: aws.String("arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"),
 		RoleName:  aws.String("devpod-ec2-role"),
+	}); err != nil {
+		return fmt.Errorf("attach SSM policy: %w", err)
 	}
 
-	_, err = svc.AttachRolePolicy(ctx, ssmManagedInstanceCorePolicyInput)
-	if err != nil {
-		return "", fmt.Errorf("attach SSM policy: %w", err)
-	}
-
-	if provider.Config.KmsKeyARNForSessionManager != "" {
-		kmsPolicy := NewSSMKMSDecryptPolicy(provider.Config.KmsKeyARNForSessionManager)
+	if kmsArn != "" {
+		kmsPolicy := NewSSMKMSDecryptPolicy(kmsArn)
 		kmsPolicyJSON, err := json.Marshal(kmsPolicy)
 		if err != nil {
-			return "", fmt.Errorf("marshal KMS policy: %w", err)
+			return fmt.Errorf("marshal KMS policy: %w", err)
 		}
 
-		kmsDecryptPolicyInput := &iam.PutRolePolicyInput{
+		if _, err = svc.PutRolePolicy(ctx, &iam.PutRolePolicyInput{
 			PolicyDocument: aws.String(string(kmsPolicyJSON)),
 			PolicyName:     aws.String("ssm-kms-decrypt-policy"),
 			RoleName:       aws.String("devpod-ec2-role"),
-		}
-
-		_, err = svc.PutRolePolicy(ctx, kmsDecryptPolicyInput)
-		if err != nil {
-			return "", fmt.Errorf("put KMS decrypt policy: %w", err)
+		}); err != nil {
+			return fmt.Errorf("put KMS decrypt policy: %w", err)
 		}
 	}
 
-	instanceProfile := &iam.CreateInstanceProfileInput{
+	return nil
+}
+
+func createInstanceProfile(ctx context.Context, svc *iam.Client) (string, error) {
+	response, err := svc.CreateInstanceProfile(ctx, &iam.CreateInstanceProfileInput{
 		InstanceProfileName: aws.String("devpod-ec2-role"),
-	}
-
-	response, err := svc.CreateInstanceProfile(ctx, instanceProfile)
+	})
 	if err != nil {
 		return "", err
 	}
 
-	instanceRole := &iam.AddRoleToInstanceProfileInput{
+	if _, err = svc.AddRoleToInstanceProfile(ctx, &iam.AddRoleToInstanceProfileInput{
 		InstanceProfileName: aws.String("devpod-ec2-role"),
 		RoleName:            aws.String("devpod-ec2-role"),
-	}
-
-	_, err = svc.AddRoleToInstanceProfile(ctx, instanceRole)
-	if err != nil {
+	}); err != nil {
 		return "", err
 	}
 
-	// Wait for instance profile to be available
 	waiter := iam.NewInstanceProfileExistsWaiter(svc)
 	if err := waiter.Wait(ctx, &iam.GetInstanceProfileInput{
 		InstanceProfileName: aws.String("devpod-ec2-role"),
@@ -746,55 +767,49 @@ func GetDevpodRunningInstance(
 }
 
 func GetInstanceTags(providerAws *AwsProvider, zone route53Zone) []types.TagSpecification {
+	tags := buildBaseTags(providerAws.Config.MachineID, zone)
+	customTags := parseCustomTags(providerAws.Config.InstanceTags)
+	tags = append(tags, customTags...)
+
+	return []types.TagSpecification{{ResourceType: "instance", Tags: tags}}
+}
+
+func buildBaseTags(machineID string, zone route53Zone) []types.Tag {
 	tags := []types.Tag{
-		{
-			Key:   aws.String("Name"),
-			Value: aws.String(providerAws.Config.MachineID),
-		},
-		{
-			Key:   aws.String("devpod"),
-			Value: aws.String(providerAws.Config.MachineID),
-		},
+		{Key: aws.String("Name"), Value: aws.String(machineID)},
+		{Key: aws.String("devpod"), Value: aws.String(machineID)},
 	}
 
-	// in case a Route53 zone is configured, we add the hostname of the machine as a tag in order to simplify looking up
-	// the machine's hostname on access.
 	if zone.id != "" {
 		tags = append(tags, types.Tag{
 			Key:   aws.String(tagKeyHostname),
-			Value: aws.String(providerAws.Config.MachineID + "." + zone.Name),
+			Value: aws.String(machineID + "." + zone.Name),
 		})
 	}
 
-	result := []types.TagSpecification{
-		{
-			ResourceType: "instance",
-			Tags:         tags,
-		},
+	return tags
+}
+
+func parseCustomTags(tagString string) []types.Tag {
+	if tagString == "" {
+		return nil
 	}
 
 	reg := regexp.MustCompile(`Name=([A-Za-z0-9!"#$%&'()*+\-./:;<>?@[\\\]^_{|}~]+),Value=([A-Za-z0-9!"#$%&'()*+\-./:;<>?@[\\\]^_{|}~]+)`)
-
-	tagList := reg.FindAllString(providerAws.Config.InstanceTags, -1)
+	tagList := reg.FindAllString(tagString, -1)
 	if tagList == nil {
-		return result
+		return nil
 	}
 
+	tags := make([]types.Tag, 0, len(tagList))
 	for _, tag := range tagList {
 		tagSplit := strings.Split(tag, ",")
-
 		name := strings.ReplaceAll(tagSplit[0], "Name=", "")
 		value := strings.ReplaceAll(tagSplit[1], "Value=", "")
-
-		tagSpec := types.Tag{
-			Key:   aws.String(name),
-			Value: aws.String(value),
-		}
-
-		result[0].Tags = append(result[0].Tags, tagSpec)
+		tags = append(tags, types.Tag{Key: aws.String(name), Value: aws.String(value)})
 	}
 
-	return result
+	return tags
 }
 
 func Create(
