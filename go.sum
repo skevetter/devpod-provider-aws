@@ -60,6 +60,8 @@ github.com/blang/semver/v4 v4.0.0 h1:1PFHFE6yCCTv8C1TeyNNarDzntLi7wMI5i/pzqYIsAM
 github.com/blang/semver/v4 v4.0.0/go.mod h1:IbckMUScFkM3pff0VJDNKRiT6TG/YpiHIM2yvyW5YoQ=
 github.com/bmatcuk/doublestar/v4 v4.9.2 h1:b0mc6WyRSYLjzofB2v/0cuDUZ+MqoGyH3r0dVij35GI=
 github.com/bmatcuk/doublestar/v4 v4.9.2/go.mod h1:xBQ8jztBU6kakFMg+8WGxn0c6z1fTSPVIjEY1Wr7jzc=
+github.com/bmatcuk/doublestar/v4 v4.10.0 h1:zU9WiOla1YA122oLM6i4EXvGW62DvKZVxIe6TYWexEs=
+github.com/bmatcuk/doublestar/v4 v4.10.0/go.mod h1:xBQ8jztBU6kakFMg+8WGxn0c6z1fTSPVIjEY1Wr7jzc=
 github.com/cenkalti/backoff/v5 v5.0.3 h1:ZN+IMa753KfX5hd8vVaMixjnqRZ3y8CuJKRKj1xcsSM=
 github.com/cenkalti/backoff/v5 v5.0.3/go.mod h1:rkhZdG3JZukswDf7f0cwqPNk4K0sa+F97BxZthm/crw=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
@@ -271,6 +273,8 @@ github.com/skevetter/devpod v0.9.7 h1:QWQaHjvJanrqpvH5gINX5n8qyrV+9Mol/cYRp6NAkA
 github.com/skevetter/devpod v0.9.7/go.mod h1:55qYta2BdeokvXdzSWVPXS0vvnAauLIiznc2vn3JjQM=
 github.com/skevetter/devpod v0.9.8 h1:1bEn7bAJVhu/YeBLkbL0UsDazkKcGJCnZvh+DyvuG3E=
 github.com/skevetter/devpod v0.9.8/go.mod h1:U7EKIZhVlExniNdj+udedtiQ/pyfykRDysMDTAd3SmM=
+github.com/skevetter/devpod v0.9.11 h1:+ow01lfiw/vLzG4G94O1/qXoSNf0BktE6etExJCVCWM=
+github.com/skevetter/devpod v0.9.11/go.mod h1:zK2D395ISQOdfOe8poRbd393gR4TatnQkvRpfv7AmVA=
 github.com/skevetter/log v0.0.0-20260106023547-bfd26ab1367c h1:2IjLo9V6TLV2rORRKKu+NVMSrOAEeuS4KJPk3v9e1rs=
 github.com/skevetter/log v0.0.0-20260106023547-bfd26ab1367c/go.mod h1:Aqjwx8xRSxBWtTYXK3EzxManSgYZl7FaSh8J5LvTAK0=
 github.com/soheilhy/cmux v0.1.5 h1:jjzc5WVemNEDTLwv9tlmemhC73tI08BNOIGwBOo10Js=
