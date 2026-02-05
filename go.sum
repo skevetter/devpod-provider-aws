@@ -298,6 +298,8 @@ github.com/skevetter/devpod v0.12.0 h1:y7faLUHUyIEP4AJzvT2WfAZQq1A1ltXFgWMNfqY81
 github.com/skevetter/devpod v0.12.0/go.mod h1:CP3rhjKQUpGfONxqZu4J+kOksOqFMM6u7JafQvtwqmw=
 github.com/skevetter/devpod v0.12.1 h1:McCvHfsYO8nXX3cW9vTuXaM1YGFNjwA4j4iTl71xo9Q=
 github.com/skevetter/devpod v0.12.1/go.mod h1:e3cBQpVQye794tVMKZffqZwPEALuUKI0fufcMELla3A=
+github.com/skevetter/devpod v0.12.2 h1:37FSuVxmPH+0WTmSOv+0KojJDd9LhPMQEA51p8+s4wk=
+github.com/skevetter/devpod v0.12.2/go.mod h1:Sq3eZN8haow940ePteUX+5ZY3xRs3M5IN8E37WJKxdk=
 github.com/skevetter/log v0.0.0-20260106023547-bfd26ab1367c h1:2IjLo9V6TLV2rORRKKu+NVMSrOAEeuS4KJPk3v9e1rs=
 github.com/skevetter/log v0.0.0-20260106023547-bfd26ab1367c/go.mod h1:Aqjwx8xRSxBWtTYXK3EzxManSgYZl7FaSh8J5LvTAK0=
 github.com/soheilhy/cmux v0.1.5 h1:jjzc5WVemNEDTLwv9tlmemhC73tI08BNOIGwBOo10Js=
