@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"net/url"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
+	"github.com/urfave/cli/v3"
 )
 
 const (
@@ -76,18 +78,49 @@ type buildConfig struct {
 }
 
 func main() {
-	if err := run(); err != nil {
+	app := &cli.Command{
+		Name:      "provider-builder",
+		Usage:     "Build DevPod AWS provider configuration",
+		ArgsUsage: "[version]",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "project-root",
+				Usage:   "Project root path or URL",
+				Sources: cli.EnvVars("PROJECT_ROOT"),
+			},
+			&cli.BoolFlag{
+				Name:  "dev",
+				Usage: "Development mode (auto-sets project-root to ./dist)",
+			},
+		},
+		Action: func(ctx context.Context, c *cli.Command) error {
+			version := c.Args().First()
+			if version == "" {
+				return fmt.Errorf("version is required")
+			}
+
+			projectRoot := c.String("project-root")
+			if projectRoot == "" && c.Bool("dev") {
+				projectRoot = "./dist"
+			}
+			if projectRoot != "" {
+				if err := os.Setenv("PROJECT_ROOT", projectRoot); err != nil {
+					return fmt.Errorf("set PROJECT_ROOT: %w", err)
+				}
+			}
+
+			return run(version)
+		},
+	}
+
+	if err := app.Run(context.Background(), os.Args); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
-	if len(os.Args) != 2 {
-		return fmt.Errorf("expected version as argument")
-	}
-
-	cfg, err := newBuildConfig(os.Args[1])
+func run(version string) error {
+	cfg, err := newBuildConfig(version)
 	if err != nil {
 		return err
 	}
