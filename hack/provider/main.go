@@ -81,7 +81,7 @@ func main() {
 	app := &cli.Command{
 		Name:      "provider-builder",
 		Usage:     "Build DevPod AWS provider configuration",
-		ArgsUsage: "[version]",
+		ArgsUsage: "<version>",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "project-root",
