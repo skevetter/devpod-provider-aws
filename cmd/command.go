@@ -76,7 +76,14 @@ func (cmd *CommandCmd) Run(
 		return err
 	}
 
-	return ssh.Run(ctx, client, command, os.Stdin, os.Stdout, os.Stderr, nil)
+	return ssh.Run(ssh.RunOptions{
+		Context: ctx,
+		Client:  client,
+		Command: command,
+		Stdin:   os.Stdin,
+		Stdout:  os.Stdout,
+		Stderr:  os.Stderr,
+	})
 }
 
 // ConnectionStrategy defines how to connect to an EC2 instance
