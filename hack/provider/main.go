@@ -160,7 +160,7 @@ func buildOptionGroups() []OptionGroup {
 				"AWS_VPC_ID", "AWS_SUBNET_ID", "AWS_SECURITY_GROUP_ID", "AWS_INSTANCE_PROFILE_ARN",
 				"AWS_INSTANCE_TAGS", "AWS_USE_INSTANCE_CONNECT_ENDPOINT", "AWS_INSTANCE_CONNECT_ENDPOINT_ID",
 				"AWS_USE_SPOT_INSTANCE", "AWS_USE_SESSION_MANAGER", "AWS_KMS_KEY_ARN_FOR_SESSION_MANAGER",
-				"AWS_USE_ROUTE53", "AWS_ROUTE53_ZONE_NAME", "AWS_AVAILABILITY_ZONE", "AWS_USE_NESTED_VIRTZALIZATION",
+				"AWS_USE_ROUTE53", "AWS_ROUTE53_ZONE_NAME", "AWS_AVAILABILITY_ZONE", "AWS_USE_NESTED_VIRTUALIZATION",
 			},
 		},
 		{
@@ -268,7 +268,7 @@ func buildOptions() Options {
 				"m7g.12xlarge", "m7g.16xlarge", "m7g.2xlarge", "m7g.4xlarge", "m7g.8xlarge", "m7g.large", "m7g.medium", "m7g.xlarge",
 			},
 		},
-		"AWS_USE_NESTED_VIRTZALIZATION": {
+		"AWS_USE_NESTED_VIRTUALIZATION": {
 			Description: "If defined, nested virtualization will be enabled for the EC2 instance.",
 			Type:        "boolean",
 			Default:     "false",
