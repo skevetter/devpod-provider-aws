@@ -19,6 +19,7 @@ var (
 	AWS_AVAILABILITY_ZONE               = "AWS_AVAILABILITY_ZONE"
 	AWS_INSTANCE_TAGS                   = "AWS_INSTANCE_TAGS"
 	AWS_INSTANCE_PROFILE_ARN            = "AWS_INSTANCE_PROFILE_ARN"
+	AWS_USE_NESTED_VIRTZALIZATION       = "AWS_USE_NESTED_VIRTZALIZATION"
 	AWS_USE_INSTANCE_CONNECT_ENDPOINT   = "AWS_USE_INSTANCE_CONNECT_ENDPOINT"
 	AWS_INSTANCE_CONNECT_ENDPOINT_ID    = "AWS_INSTANCE_CONNECT_ENDPOINT_ID"
 	AWS_USE_SPOT_INSTANCE               = "AWS_USE_SPOT_INSTANCE"
@@ -46,6 +47,7 @@ type Options struct {
 	InstanceProfileArn         string
 	InstanceTags               string
 	Zone                       string
+	UseNestedVirtualization    bool
 	UseInstanceConnectEndpoint bool
 	InstanceConnectEndpointID  string
 	UseSpotInstance            bool
@@ -88,6 +90,7 @@ func FromEnv(init, withFolder bool) (*Options, error) {
 	retOptions.InstanceTags = os.Getenv(AWS_INSTANCE_TAGS)
 	retOptions.InstanceProfileArn = os.Getenv(AWS_INSTANCE_PROFILE_ARN)
 	retOptions.Zone = os.Getenv(AWS_REGION)
+	retOptions.UseNestedVirtualization = os.Getenv(AWS_USE_NESTED_VIRTZALIZATION) == "true"
 	retOptions.UseInstanceConnectEndpoint = os.Getenv(AWS_USE_INSTANCE_CONNECT_ENDPOINT) == "true"
 	retOptions.InstanceConnectEndpointID = os.Getenv(AWS_INSTANCE_CONNECT_ENDPOINT_ID)
 	retOptions.UseSpotInstance = os.Getenv(AWS_USE_SPOT_INSTANCE) == "true"
