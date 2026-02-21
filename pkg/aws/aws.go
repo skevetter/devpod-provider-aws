@@ -943,11 +943,6 @@ func Create(
 
 	volSizeI32 := int32(providerAws.Config.DiskSizeGB)
 
-	var nestedVirtualization = types.NestedVirtualizationSpecificationDisabled
-	if providerAws.Config.UseNestedVirtualization {
-		nestedVirtualization = types.NestedVirtualizationSpecificationEnabled
-	}
-
 	providerAws.Log.Debugf("generating user data script")
 	userData, err := GetInjectKeypairScript(providerAws.Config.MachineFolder)
 	if err != nil {
@@ -983,11 +978,14 @@ func Create(
 				},
 			},
 		},
-		CpuOptions: &types.CpuOptionsRequest{
-			NestedVirtualization: nestedVirtualization,
-		},
 		TagSpecifications: GetInstanceTags(providerAws, r53Zone),
 		UserData:          &userData,
+	}
+	if providerAws.Config.UseNestedVirtualization {
+		providerAws.Log.Debugf("enabling nested virtualization")
+		instance.CpuOptions = &types.CpuOptionsRequest{
+			NestedVirtualization: types.NestedVirtualizationSpecificationEnabled,
+		}
 	}
 	if providerAws.Config.UseSpotInstance {
 		providerAws.Log.Debugf("using spot instance")
