@@ -61,6 +61,8 @@ type Options struct {
 	SessionToken               string
 }
 
+var strTrue = "true"
+
 func FromEnv(init, withFolder bool) (*Options, error) {
 	retOptions := &Options{}
 
@@ -90,13 +92,13 @@ func FromEnv(init, withFolder bool) (*Options, error) {
 	retOptions.InstanceTags = os.Getenv(AWS_INSTANCE_TAGS)
 	retOptions.InstanceProfileArn = os.Getenv(AWS_INSTANCE_PROFILE_ARN)
 	retOptions.Zone = os.Getenv(AWS_REGION)
-	retOptions.UseNestedVirtualization = os.Getenv(AWS_USE_NESTED_VIRTUALIZATION) == "true"
-	retOptions.UseInstanceConnectEndpoint = os.Getenv(AWS_USE_INSTANCE_CONNECT_ENDPOINT) == "true"
+	retOptions.UseNestedVirtualization = os.Getenv(AWS_USE_NESTED_VIRTUALIZATION) == strTrue
+	retOptions.UseInstanceConnectEndpoint = os.Getenv(AWS_USE_INSTANCE_CONNECT_ENDPOINT) == strTrue
 	retOptions.InstanceConnectEndpointID = os.Getenv(AWS_INSTANCE_CONNECT_ENDPOINT_ID)
-	retOptions.UseSpotInstance = os.Getenv(AWS_USE_SPOT_INSTANCE) == "true"
-	retOptions.UseSessionManager = os.Getenv(AWS_USE_SESSION_MANAGER) == "true"
+	retOptions.UseSpotInstance = os.Getenv(AWS_USE_SPOT_INSTANCE) == strTrue
+	retOptions.UseSessionManager = os.Getenv(AWS_USE_SESSION_MANAGER) == strTrue
 	retOptions.KmsKeyARNForSessionManager = os.Getenv(AWS_KMS_KEY_ARN_FOR_SESSION_MANAGER)
-	retOptions.UseRoute53Hostnames = os.Getenv(AWS_USE_ROUTE53) == "true"
+	retOptions.UseRoute53Hostnames = os.Getenv(AWS_USE_ROUTE53) == strTrue
 	retOptions.Route53ZoneName = os.Getenv(AWS_ROUTE53_ZONE_NAME)
 	retOptions.AccessKeyID = os.Getenv(AWS_ACCESS_KEY_ID)
 	retOptions.SecretAccessKey = os.Getenv(AWS_SECRET_ACCESS_KEY)
