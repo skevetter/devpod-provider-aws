@@ -366,6 +366,8 @@ github.com/skevetter/devpod v0.14.1 h1:kVvJpLWJLdfYTYHgL26H1AdA7MdyQuwSMM+4ufIT/
 github.com/skevetter/devpod v0.14.1/go.mod h1:SdrIAu7e8DYp8P/u913OkplwiccYY0G7oaFpgpZQOxs=
 github.com/skevetter/devpod v0.14.2 h1:NWrpihKUKzXgI20AGit68AbgOiy1m6LnAOYtxf7VidU=
 github.com/skevetter/devpod v0.14.2/go.mod h1:SdrIAu7e8DYp8P/u913OkplwiccYY0G7oaFpgpZQOxs=
+github.com/skevetter/devpod v0.14.3 h1:vtOspkIawj6p6FVjzxy5CwVuSMU7TpnEc2LrzjopG4w=
+github.com/skevetter/devpod v0.14.3/go.mod h1:SdrIAu7e8DYp8P/u913OkplwiccYY0G7oaFpgpZQOxs=
 github.com/skevetter/log v0.0.0-20260106023547-bfd26ab1367c h1:2IjLo9V6TLV2rORRKKu+NVMSrOAEeuS4KJPk3v9e1rs=
 github.com/skevetter/log v0.0.0-20260106023547-bfd26ab1367c/go.mod h1:Aqjwx8xRSxBWtTYXK3EzxManSgYZl7FaSh8J5LvTAK0=
 github.com/soheilhy/cmux v0.1.5 h1:jjzc5WVemNEDTLwv9tlmemhC73tI08BNOIGwBOo10Js=
