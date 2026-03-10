@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/skevetter/devpod-provider-aws/pkg/aws"
-	"github.com/skevetter/devpod/pkg/provider"
 	"github.com/skevetter/log"
 	"github.com/spf13/cobra"
 )
@@ -16,32 +15,22 @@ type StopCmd struct{}
 // NewStopCmd defines a command
 func NewStopCmd() *cobra.Command {
 	cmd := &StopCmd{}
-	stopCmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   "stop",
 		Short: "Stop an instance",
-		RunE: func(_ *cobra.Command, args []string) error {
-			awsProvider, err := aws.NewProvider(context.Background(), false, log.Default)
+		RunE: func(cobraCmd *cobra.Command, args []string) error {
+			awsProvider, err := aws.NewProvider(cobraCmd.Context(), false, log.Default)
 			if err != nil {
 				return err
 			}
 
-			return cmd.Run(
-				context.Background(),
-				awsProvider,
-				getMachineProviderFromEnv(),
-			)
+			return cmd.Run(cobraCmd.Context(), awsProvider)
 		},
 	}
-
-	return stopCmd
 }
 
 // Run runs the command logic
-func (cmd *StopCmd) Run(
-	ctx context.Context,
-	providerAws *aws.AwsProvider,
-	machine *provider.Machine,
-) error {
+func (cmd *StopCmd) Run(ctx context.Context, providerAws *aws.AwsProvider) error {
 	instances, err := aws.GetDevpodRunningInstance(
 		ctx,
 		providerAws.AwsConfig,

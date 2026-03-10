@@ -40,12 +40,12 @@ const (
 
 // detect if we're in an ec2 instance
 func isEC2Instance() bool {
-	client := &http.Client{}
+	httpClient := &http.Client{}
 	req, err := http.NewRequest("GET", "http://instance-data.ec2.internal", nil)
 	if err != nil {
 		return false
 	}
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return false
 	}
@@ -744,50 +744,22 @@ func CreateDevpodSecurityGroup(ctx context.Context, provider *AwsProvider) (stri
 	return groupID, nil
 }
 
+func anyState() []string {
+	return []string{
+		"pending",
+		"running",
+		"shutting-down",
+		"stopped",
+		"stopping",
+	}
+}
+
 func GetDevpodInstance(
 	ctx context.Context,
 	cfg aws.Config,
 	name string,
 ) (Machine, error) {
-	svc := ec2.NewFromConfig(cfg)
-
-	input := &ec2.DescribeInstancesInput{
-		Filters: []types.Filter{
-			{
-				Name: aws.String("tag:devpod"),
-				Values: []string{
-					name,
-				},
-			},
-			{
-				Name: aws.String("instance-state-name"),
-				Values: []string{
-					"pending",
-					"running",
-					"shutting-down",
-					"stopped",
-					"stopping",
-				},
-			},
-		},
-	}
-
-	result, err := svc.DescribeInstances(ctx, input)
-	if err != nil {
-		return Machine{}, err
-	}
-
-	// Sort slice in order to have the newest result first
-	sort.Slice(result.Reservations, func(i, j int) bool {
-		return result.Reservations[i].Instances[0].LaunchTime.After(
-			*result.Reservations[j].Instances[0].LaunchTime,
-		)
-	})
-
-	if len(result.Reservations) == 0 || len(result.Reservations[0].Instances) == 0 {
-		return Machine{}, nil
-	}
-	return NewMachineFromInstance(result.Reservations[0].Instances[0]), nil
+	return GetMachine(ctx, cfg, name, anyState())
 }
 
 func GetDevpodStoppedInstance(
@@ -795,41 +767,7 @@ func GetDevpodStoppedInstance(
 	cfg aws.Config,
 	name string,
 ) (Machine, error) {
-	svc := ec2.NewFromConfig(cfg)
-
-	input := &ec2.DescribeInstancesInput{
-		Filters: []types.Filter{
-			{
-				Name: aws.String("tag:devpod"),
-				Values: []string{
-					name,
-				},
-			},
-			{
-				Name: aws.String("instance-state-name"),
-				Values: []string{
-					"stopped",
-				},
-			},
-		},
-	}
-
-	result, err := svc.DescribeInstances(ctx, input)
-	if err != nil {
-		return Machine{}, err
-	}
-
-	// Sort slice in order to have the newest result first
-	sort.Slice(result.Reservations, func(i, j int) bool {
-		return result.Reservations[i].Instances[0].LaunchTime.After(
-			*result.Reservations[j].Instances[0].LaunchTime,
-		)
-	})
-
-	if len(result.Reservations) == 0 || len(result.Reservations[0].Instances) == 0 {
-		return Machine{}, nil
-	}
-	return NewMachineFromInstance(result.Reservations[0].Instances[0]), nil
+	return GetMachine(ctx, cfg, name, []string{"stopped"})
 }
 
 func GetDevpodRunningInstance(
@@ -837,6 +775,28 @@ func GetDevpodRunningInstance(
 	cfg aws.Config,
 	name string,
 ) (Machine, error) {
+	return GetMachine(ctx, cfg, name, []string{"running"})
+}
+
+func GetMachine(
+	ctx context.Context,
+	cfg aws.Config,
+	name string,
+	states []string,
+) (Machine, error) {
+	instance, err := GetInstance(ctx, cfg, name, states)
+	if err != nil {
+		return Machine{}, err
+	}
+	return NewMachineFromInstance(instance), nil
+}
+
+func GetInstance(
+	ctx context.Context,
+	cfg aws.Config,
+	name string,
+	states []string,
+) (types.Instance, error) {
 	svc := ec2.NewFromConfig(cfg)
 
 	input := &ec2.DescribeInstancesInput{
@@ -848,17 +808,15 @@ func GetDevpodRunningInstance(
 				},
 			},
 			{
-				Name: aws.String("instance-state-name"),
-				Values: []string{
-					"running",
-				},
+				Name:   aws.String("instance-state-name"),
+				Values: states,
 			},
 		},
 	}
 
 	result, err := svc.DescribeInstances(ctx, input)
 	if err != nil {
-		return Machine{}, err
+		return types.Instance{}, err
 	}
 
 	// Sort slice in order to have the newest result first
@@ -869,9 +827,9 @@ func GetDevpodRunningInstance(
 	})
 
 	if len(result.Reservations) == 0 || len(result.Reservations[0].Instances) == 0 {
-		return Machine{}, nil
+		return types.Instance{}, fmt.Errorf("instance %s not found", name)
 	}
-	return NewMachineFromInstance(result.Reservations[0].Instances[0]), nil
+	return result.Reservations[0].Instances[0], nil
 }
 
 func GetInstanceTags(providerAws *AwsProvider, zone route53Zone) []types.TagSpecification {
@@ -1076,7 +1034,7 @@ func Stop(ctx context.Context, provider *AwsProvider, instanceID string) error {
 	return nil
 }
 
-func Status(ctx context.Context, provider *AwsProvider, name string) (client.Status, error) {
+func Status(ctx context.Context, provider *AwsProvider, name string) (string, error) {
 	provider.Log.Debugf("Status: machine=%s", name)
 
 	result, err := GetDevpodInstance(ctx, provider.AwsConfig, name)
@@ -1090,7 +1048,7 @@ func Status(ctx context.Context, provider *AwsProvider, name string) (client.Sta
 	}
 
 	status := result.Status
-	var clientStatus client.Status
+	var clientStatus string
 	switch status {
 	case "running":
 		clientStatus = client.StatusRunning
@@ -1105,6 +1063,25 @@ func Status(ctx context.Context, provider *AwsProvider, name string) (client.Sta
 
 	provider.Log.Debugf("Status: machine %s is %s", name, status)
 	return clientStatus, nil
+}
+
+func Describe(ctx context.Context, provider *AwsProvider, name string) (string, error) {
+	provider.Log.Debugf("Describe: machine=%s", name)
+
+	instance, err := GetInstance(ctx, provider.AwsConfig, name, anyState())
+	if err != nil {
+		return client.DescriptionNotFound, err
+	}
+
+	instanceBytes, err := json.MarshalIndent(instance, "", "  ") // #nosec G117
+	if err != nil {
+		return client.DescriptionNotFound, err
+	}
+
+	description := string(instanceBytes)
+
+	provider.Log.Debugf("Describe: machine %s is %s", name, description)
+	return description, nil
 }
 
 func Delete(ctx context.Context, provider *AwsProvider, machine Machine) error {

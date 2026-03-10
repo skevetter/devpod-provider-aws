@@ -11,7 +11,6 @@ import (
 
 	"github.com/skevetter/devpod-provider-aws/pkg/aws"
 	"github.com/skevetter/devpod-provider-aws/pkg/options"
-	"github.com/skevetter/devpod/pkg/provider"
 	"github.com/skevetter/devpod/pkg/ssh"
 	"github.com/skevetter/log"
 	"github.com/spf13/cobra"
@@ -24,32 +23,22 @@ type CommandCmd struct{}
 // NewCommandCmd defines a command
 func NewCommandCmd() *cobra.Command {
 	cmd := &CommandCmd{}
-	commandCmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   "command",
 		Short: "Command an instance",
-		RunE: func(_ *cobra.Command, args []string) error {
-			awsProvider, err := aws.NewProvider(context.Background(), true, log.Default)
+		RunE: func(cobraCmd *cobra.Command, args []string) error {
+			awsProvider, err := aws.NewProvider(cobraCmd.Context(), true, log.Default)
 			if err != nil {
 				return err
 			}
 
-			return cmd.Run(
-				context.Background(),
-				awsProvider,
-				getMachineProviderFromEnv(),
-			)
+			return cmd.Run(cobraCmd.Context(), awsProvider)
 		},
 	}
-
-	return commandCmd
 }
 
 // Run runs the command logic
-func (cmd *CommandCmd) Run(
-	ctx context.Context,
-	providerAws *aws.AwsProvider,
-	machine *provider.Machine,
-) error {
+func (cmd *CommandCmd) Run(ctx context.Context, providerAws *aws.AwsProvider) error {
 	command := os.Getenv("COMMAND")
 	if command == "" {
 		return fmt.Errorf("command environment variable is missing")
@@ -76,8 +65,7 @@ func (cmd *CommandCmd) Run(
 		return err
 	}
 
-	return ssh.Run(ssh.RunOptions{
-		Context: ctx,
+	return ssh.Run(ctx, ssh.RunOptions{
 		Client:  client,
 		Command: command,
 		Stdin:   os.Stdin,

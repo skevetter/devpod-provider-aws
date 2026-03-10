@@ -3,3 +3,4 @@ devpod-provider-aws
 release
 .DS_Store
 dist/
+.idea

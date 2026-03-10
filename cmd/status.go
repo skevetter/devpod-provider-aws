@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/skevetter/devpod-provider-aws/pkg/aws"
-	"github.com/skevetter/devpod/pkg/provider"
 	"github.com/skevetter/log"
 	"github.com/spf13/cobra"
 )
@@ -30,32 +29,22 @@ type StatusCmd struct{}
 // NewStatusCmd defines a command
 func NewStatusCmd() *cobra.Command {
 	cmd := &StatusCmd{}
-	statusCmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   "status",
 		Short: "Status an instance",
-		RunE: func(_ *cobra.Command, args []string) error {
-			awsProvider, err := aws.NewProvider(context.Background(), true, log.Default)
+		RunE: func(cobraCmd *cobra.Command, args []string) error {
+			awsProvider, err := aws.NewProvider(cobraCmd.Context(), true, log.Default)
 			if err != nil {
 				return err
 			}
 
-			return cmd.Run(
-				context.Background(),
-				awsProvider,
-				getMachineProviderFromEnv(),
-			)
+			return cmd.Run(cobraCmd.Context(), awsProvider)
 		},
 	}
-
-	return statusCmd
 }
 
 // Run runs the command logic
-func (cmd *StatusCmd) Run(
-	ctx context.Context,
-	providerAws *aws.AwsProvider,
-	machine *provider.Machine,
-) error {
+func (cmd *StatusCmd) Run(ctx context.Context, providerAws *aws.AwsProvider) error {
 	status, err := aws.Status(ctx, providerAws, providerAws.Config.MachineID)
 	if err != nil {
 		return err

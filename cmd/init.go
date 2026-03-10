@@ -5,7 +5,6 @@ import (
 
 	"github.com/skevetter/devpod-provider-aws/pkg/aws"
 	"github.com/skevetter/devpod-provider-aws/pkg/options"
-	"github.com/skevetter/devpod/pkg/provider"
 	"github.com/skevetter/log"
 	"github.com/spf13/cobra"
 )
@@ -16,25 +15,17 @@ type InitCmd struct{}
 // NewInitCmd defines a init
 func NewInitCmd() *cobra.Command {
 	cmd := &InitCmd{}
-	initCmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   "init",
 		Short: "Init account",
-		RunE: func(_ *cobra.Command, args []string) error {
-			return cmd.Run(
-				context.Background(),
-				getMachineProviderFromEnv(),
-			)
+		RunE: func(cobraCmd *cobra.Command, args []string) error {
+			return cmd.Run(cobraCmd.Context())
 		},
 	}
-
-	return initCmd
 }
 
 // Run runs the init logic
-func (cmd *InitCmd) Run(
-	ctx context.Context,
-	machine *provider.Machine,
-) error {
+func (cmd *InitCmd) Run(ctx context.Context) error {
 	config, err := options.FromEnv(true, false)
 	if err != nil {
 		return err

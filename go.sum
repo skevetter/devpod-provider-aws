@@ -453,6 +453,8 @@ github.com/skevetter/devpod v0.14.7 h1:ojWilXtraJouzKV+j7OwPuGwvHK+cBBHkU6V/gXWM
 github.com/skevetter/devpod v0.14.7/go.mod h1:wjFyVFk3w7XyXxGWA6So8rRZ4Wu3RZRsktDM2dCLhug=
 github.com/skevetter/devpod v0.15.0 h1:dc479DmmBakgD1yZlfs5geog+tG9V9vnnheeiA+vih8=
 github.com/skevetter/devpod v0.15.0/go.mod h1:H10bmhBiWmCb1Bn2R8pes6Tn7SCWBJ5KXvxQzVJ0plQ=
+github.com/skevetter/devpod v0.16.1 h1:hXVaI7yi/Ecpx6hKewU+DgQqP5828vMCJAzml9s2ozE=
+github.com/skevetter/devpod v0.16.1/go.mod h1:4DnJuhaFx5JozFpCDwItKo2tHIIqux72FYfqJyknYcc=
 github.com/skevetter/log v0.0.0-20260106023547-bfd26ab1367c h1:2IjLo9V6TLV2rORRKKu+NVMSrOAEeuS4KJPk3v9e1rs=
 github.com/skevetter/log v0.0.0-20260106023547-bfd26ab1367c/go.mod h1:Aqjwx8xRSxBWtTYXK3EzxManSgYZl7FaSh8J5LvTAK0=
 github.com/soheilhy/cmux v0.1.5 h1:jjzc5WVemNEDTLwv9tlmemhC73tI08BNOIGwBOo10Js=
@@ -592,6 +594,8 @@ golang.org/x/sys v0.40.0 h1:DBZZqJ2Rkml6QMQsZywtnjnnGvHza6BTfYFWY9kjEWQ=
 golang.org/x/sys v0.40.0/go.mod h1:OgkHotnGiDImocRcuBABYBEXf8A9a87e/uXjp9XT3ks=
 golang.org/x/sys v0.41.0 h1:Ivj+2Cp/ylzLiEU89QhWblYnOE9zerudt9Ftecq2C6k=
 golang.org/x/sys v0.41.0/go.mod h1:OgkHotnGiDImocRcuBABYBEXf8A9a87e/uXjp9XT3ks=
+golang.org/x/sys v0.42.0 h1:omrd2nAlyT5ESRdCLYdm3+fMfNFE/+Rf4bDIQImRJeo=
+golang.org/x/sys v0.42.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
 golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1/go.mod h1:bj7SfCRtBDWHUb9snDiAeCFNEtKQo2Wmx5Cou7ajbmo=
 golang.org/x/term v0.0.0-20210927222741-03fcf44c2211/go.mod h1:jbD1KX2456YbFQfuXm/mYQcufACuNUgVhRMnK/tPxf8=
 golang.org/x/term v0.39.0 h1:RclSuaJf32jOqZz74CkPA9qFuVTX7vhLlpfj/IGWlqY=

@@ -48,11 +48,11 @@ This provider has the following options
 | AWS_INSTANCE_TAGS        | false    | Additional flags for the VM in the form of "Name=XXX,Value=YYY "  |                                                                       |
 | AWS_INSTANCE_PROFILE_ARN | false    | The ARN of the instance profile to use for the VM                 | created if not specified                                              |
 
-You will need an user profile able to:
-    - Create/Start/Stop/Destroy instances
-    - Create/Destroy security groups
-    - Create/Destroy subnets
-    - Create/Destroy instance profiles
+You will need a user profile able to:
+  - Create/Start/Stop/Destroy instances
+  - Create/Destroy security groups
+  - Create/Destroy subnets
+  - Create/Destroy instance profiles
 
 Alternatively you'll need to provide the IDs/ARNs of the already created resources.
 Instance Create/Start/Stop/Destroy permissions are mandatory for how the provider itself works.
