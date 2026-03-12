@@ -1034,8 +1034,7 @@ func Stop(ctx context.Context, provider *AwsProvider, instanceID string) error {
 	return nil
 }
 
-func Status(ctx context.Context, provider *AwsProvider, name string) (string, error) {
-	provider.Log.Debugf("Status: machine=%s", name)
+func Status(ctx context.Context, provider *AwsProvider, name string) (client.Status, error) {
 
 	result, err := GetDevpodInstance(ctx, provider.AwsConfig, name)
 	if err != nil {
@@ -1048,7 +1047,7 @@ func Status(ctx context.Context, provider *AwsProvider, name string) (string, er
 	}
 
 	status := result.Status
-	var clientStatus string
+	var clientStatus client.Status
 	switch status {
 	case "running":
 		clientStatus = client.StatusRunning
