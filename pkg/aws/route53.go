@@ -4,14 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
-	"slices"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	r53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
-	"github.com/aws/smithy-go"
 )
 
 // GetDevpodRoute53Zone retrieves the Route53 zone for the devpod if applicable. A zone name can either be specified
@@ -22,7 +19,7 @@ func GetDevpodRoute53Zone(ctx context.Context, provider *AwsProvider) (route53Zo
 		return findRoute53ZoneByName(ctx, r53client, provider.Config.Route53ZoneName)
 	}
 
-	return detectRoute53ZoneByTag(ctx, r53client, provider)
+	return detectRoute53ZoneByTag(ctx, r53client)
 }
 
 func findRoute53ZoneByName(
@@ -59,7 +56,6 @@ func findRoute53ZoneByName(
 func detectRoute53ZoneByTag(
 	ctx context.Context,
 	r53client *route53.Client,
-	provider *AwsProvider,
 ) (route53Zone, error) {
 	truncated := true
 	var marker *string
@@ -70,10 +66,14 @@ func detectRoute53ZoneByTag(
 			Marker:   marker,
 		})
 		if err != nil {
-			return route53Zone{}, handleListZonesError(err, provider)
+			return route53Zone{}, fmt.Errorf("list hosted zones: %w", err)
 		}
 
-		if zone, found := findTaggedZone(ctx, r53client, hostedZoneList.HostedZones); found {
+		zone, found, err := findTaggedZone(ctx, r53client, hostedZoneList.HostedZones)
+		if err != nil {
+			return route53Zone{}, err
+		}
+		if found {
 			return zone, nil
 		}
 
@@ -84,51 +84,71 @@ func detectRoute53ZoneByTag(
 	return route53Zone{}, nil
 }
 
-func handleListZonesError(err error, provider *AwsProvider) error {
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) && apiErr.ErrorCode() == "AccessDenied" {
-		provider.Log.Debugf(
-			"Access denied to list hosted zones, skipping Route53 zone detection: %v",
-			err,
-		)
-		return nil
-	}
-
-	return fmt.Errorf("list hosted zones: %w", err)
-}
-
 func findTaggedZone(
 	ctx context.Context,
 	r53client *route53.Client,
 	zones []r53types.HostedZone,
-) (route53Zone, bool) {
+) (route53Zone, bool, error) {
 	hostedZoneById := make(map[string]*r53types.HostedZone, len(zones))
+	ids := make([]string, 0, len(zones))
 	for _, hostedZone := range zones {
-		hostedZoneById[strings.TrimPrefix(*hostedZone.Id, "/"+string(r53types.TagResourceTypeHostedzone)+"/")] = &hostedZone
+		id := strings.TrimPrefix(
+			*hostedZone.Id,
+			"/"+string(r53types.TagResourceTypeHostedzone)+"/",
+		)
+		hostedZoneById[id] = &hostedZone
+		ids = append(ids, id)
 	}
 
 	resources, err := r53client.ListTagsForResources(ctx, &route53.ListTagsForResourcesInput{
 		ResourceType: r53types.TagResourceTypeHostedzone,
-		ResourceIds:  slices.Collect(maps.Keys(hostedZoneById)),
+		ResourceIds:  ids,
 	})
 	if err != nil {
-		return route53Zone{}, false
+		return route53Zone{}, false, fmt.Errorf("list tags for resources: %w", err)
 	}
 
-	for _, resourceTagSet := range resources.ResourceTagSets {
-		for _, tag := range resourceTagSet.Tags {
-			if *tag.Key == tagKeyDevpod && *tag.Value == tagKeyDevpod {
-				hz := hostedZoneById[*resourceTagSet.ResourceId]
-				return route53Zone{
-					id:      *resourceTagSet.ResourceId,
-					Name:    strings.TrimSuffix(*hz.Name, "."),
-					private: hz.Config.PrivateZone,
-				}, true
-			}
+	matches := collectDevpodZones(resources.ResourceTagSets, hostedZoneById)
+
+	switch len(matches) {
+	case 0:
+		return route53Zone{}, false, nil
+	case 1:
+		return matches[0], true, nil
+	default:
+		return route53Zone{}, false, fmt.Errorf(
+			"found %d hosted zones tagged with devpod=devpod, expected exactly one",
+			len(matches),
+		)
+	}
+}
+
+func collectDevpodZones(
+	tagSets []r53types.ResourceTagSet,
+	zonesByID map[string]*r53types.HostedZone,
+) []route53Zone {
+	var matches []route53Zone
+	for _, resourceTagSet := range tagSets {
+		if !hasDevpodTag(resourceTagSet.Tags) {
+			continue
+		}
+		hz := zonesByID[*resourceTagSet.ResourceId]
+		matches = append(matches, route53Zone{
+			id:      *resourceTagSet.ResourceId,
+			Name:    strings.TrimSuffix(*hz.Name, "."),
+			private: hz.Config.PrivateZone,
+		})
+	}
+	return matches
+}
+
+func hasDevpodTag(tags []r53types.Tag) bool {
+	for _, tag := range tags {
+		if *tag.Key == tagKeyDevpod && *tag.Value == tagKeyDevpod {
+			return true
 		}
 	}
-
-	return route53Zone{}, false
+	return false
 }
 
 // route53Record holds the parameters for a Route53 A record upsert.

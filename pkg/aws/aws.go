@@ -335,7 +335,7 @@ func discoverSubnet(ctx context.Context, provider *AwsProvider) (string, error) 
 		return "", err
 	}
 
-	if subnet := findTaggedDevPodSubnet(subnets); subnet != nil {
+	if subnet := findTaggedDevPodSubnet(filterByVPC(subnets, vpcID)); subnet != nil {
 		provider.Log.Debugf(
 			"found tagged subnet %s with %d available IPs",
 			*subnet.SubnetId,
@@ -384,6 +384,19 @@ func listAllSubnets(ctx context.Context, svc *ec2.Client, az string) ([]types.Su
 		subnets = append(subnets, page.Subnets...)
 	}
 	return subnets, nil
+}
+
+func filterByVPC(subnets []types.Subnet, vpcID string) []types.Subnet {
+	if vpcID == "" {
+		return subnets
+	}
+	var filtered []types.Subnet
+	for _, s := range subnets {
+		if s.VpcId != nil && *s.VpcId == vpcID {
+			filtered = append(filtered, s)
+		}
+	}
+	return filtered
 }
 
 func findTaggedDevPodSubnet(subnets []types.Subnet) *types.Subnet {
@@ -987,18 +1000,22 @@ func Create(
 	}
 	providerAws.Log.Debugf("EC2 instance launched: %s", *result.Instances[0].InstanceId)
 
+	machine := NewMachineFromInstance(result.Instances[0])
+
 	if r53Zone.id != "" {
-		if err := upsertRoute53ForInstance(
+		resolvedIP, err := upsertRoute53ForInstance(
 			ctx,
 			providerAws,
 			r53Zone,
 			result.Instances[0],
-		); err != nil {
-			return Machine{}, err
+		)
+		if err != nil {
+			terminateOnCleanup(ctx, providerAws, *result.Instances[0].InstanceId)
+			return Machine{}, fmt.Errorf("create Route53 record: %w", err)
 		}
+		machine.PublicIP = resolvedIP
 	}
 
-	machine := NewMachineFromInstance(result.Instances[0])
 	providerAws.Log.Debugf("instance %s created", machine.InstanceID)
 	return machine, nil
 }
@@ -1016,24 +1033,19 @@ func buildRunInstancesInput(
 		return nil, route53Zone{}, err
 	}
 
-	var r53Zone route53Zone
-	if providerAws.Config.UseRoute53Hostnames {
-		r53Zone, err = GetDevpodRoute53Zone(ctx, providerAws)
-		if err != nil {
-			return nil, route53Zone{}, err
-		}
+	r53Zone, err := resolveRoute53Zone(ctx, providerAws)
+	if err != nil {
+		return nil, route53Zone{}, err
 	}
 
-	if providerAws.Config.DiskSizeGB < 0 || providerAws.Config.DiskSizeGB > math.MaxInt32 {
-		return nil, route53Zone{}, fmt.Errorf(
-			"invalid disk size: %d",
-			providerAws.Config.DiskSizeGB,
-		)
+	volSizeI32, err := validatedDiskSize(providerAws.Config.DiskSizeGB)
+	if err != nil {
+		return nil, route53Zone{}, err
 	}
-	volSizeI32 := int32(providerAws.Config.DiskSizeGB) //nolint:gosec // bounds checked above
+	cfg := providerAws.Config
 	instance := &ec2.RunInstancesInput{
-		ImageId:          aws.String(providerAws.Config.DiskImage),
-		InstanceType:     types.InstanceType(providerAws.Config.MachineType),
+		ImageId:          aws.String(cfg.DiskImage),
+		InstanceType:     types.InstanceType(cfg.MachineType),
 		MinCount:         aws.Int32(1),
 		MaxCount:         aws.Int32(1),
 		SecurityGroupIds: devpodSG,
@@ -1044,7 +1056,7 @@ func buildRunInstancesInput(
 		},
 		BlockDeviceMappings: []types.BlockDeviceMapping{
 			{
-				DeviceName: aws.String(providerAws.Config.RootDevice),
+				DeviceName: aws.String(cfg.RootDevice),
 				Ebs: &types.EbsBlockDevice{
 					VolumeSize: &volSizeI32,
 				},
@@ -1056,7 +1068,10 @@ func buildRunInstancesInput(
 
 	applyNestedVirtualization(providerAws, instance)
 	applySpotInstance(providerAws, instance)
-	applyInstanceProfile(ctx, providerAws, instance)
+
+	if err := applyInstanceProfile(ctx, providerAws, instance); err != nil {
+		return nil, route53Zone{}, err
+	}
 
 	subnetID, err := GetSubnet(ctx, providerAws)
 	if err != nil {
@@ -1065,6 +1080,20 @@ func buildRunInstancesInput(
 	instance.SubnetId = &subnetID
 
 	return instance, r53Zone, nil
+}
+
+func resolveRoute53Zone(ctx context.Context, p *AwsProvider) (route53Zone, error) {
+	if !p.Config.UseRoute53Hostnames {
+		return route53Zone{}, nil
+	}
+	return GetDevpodRoute53Zone(ctx, p)
+}
+
+func validatedDiskSize(size int) (int32, error) {
+	if size < 0 || size > math.MaxInt32 {
+		return 0, fmt.Errorf("invalid disk size: %d", size)
+	}
+	return int32(size), nil //nolint:gosec // bounds checked above
 }
 
 func applyNestedVirtualization(providerAws *AwsProvider, instance *ec2.RunInstancesInput) {
@@ -1098,17 +1127,17 @@ func applyInstanceProfile(
 	ctx context.Context,
 	providerAws *AwsProvider,
 	instance *ec2.RunInstancesInput,
-) {
+) error {
 	providerAws.Log.Debugf("getting instance profile")
 	profile, err := GetDevpodInstanceProfile(ctx, providerAws)
 	if err != nil {
-		providerAws.Log.Warnf("failed to get instance profile: %v", err)
-		return
+		return fmt.Errorf("get instance profile: %w", err)
 	}
 	providerAws.Log.Debugf("using instance profile: %s", profile)
 	instance.IamInstanceProfile = &types.IamInstanceProfileSpecification{
 		Arn: aws.String(profile),
 	}
+	return nil
 }
 
 func upsertRoute53ForInstance(
@@ -1116,7 +1145,7 @@ func upsertRoute53ForInstance(
 	providerAws *AwsProvider,
 	zone route53Zone,
 	inst types.Instance,
-) error {
+) (string, error) {
 	hostname := providerAws.Config.MachineID + "." + zone.Name
 	ip := *inst.PrivateIpAddress
 
@@ -1125,7 +1154,7 @@ func upsertRoute53ForInstance(
 
 		publicIP, err := resolvePublicIP(ctx, providerAws, svc, inst)
 		if err != nil {
-			return err
+			return "", err
 		}
 
 		ip = publicIP
@@ -1133,11 +1162,15 @@ func upsertRoute53ForInstance(
 
 	providerAws.Log.Debugf("creating Route53 record: %s -> %s", hostname, ip)
 
-	return UpsertDevpodRoute53Record(ctx, providerAws, route53Record{
+	if err := UpsertDevpodRoute53Record(ctx, providerAws, route53Record{
 		zoneID:   zone.id,
 		hostname: hostname,
 		ip:       ip,
-	})
+	}); err != nil {
+		return "", err
+	}
+
+	return ip, nil
 }
 
 func resolvePublicIP(
@@ -1258,6 +1291,17 @@ func Describe(ctx context.Context, provider *AwsProvider, name string) (string, 
 
 	provider.Log.Debugf("machine %s is %s", name, description)
 	return description, nil
+}
+
+func terminateOnCleanup(ctx context.Context, provider *AwsProvider, instanceID string) {
+	provider.Log.Debugf("terminating orphaned instance %s", instanceID)
+	svc := ec2.NewFromConfig(provider.AwsConfig)
+	_, err := svc.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
+		InstanceIds: []string{instanceID},
+	})
+	if err != nil {
+		provider.Log.Warnf("failed to terminate orphaned instance %s: %v", instanceID, err)
+	}
 }
 
 func Delete(ctx context.Context, provider *AwsProvider, machine Machine) error {
