@@ -39,9 +39,9 @@ const (
 )
 
 // detect if we're in an ec2 instance
-func isEC2Instance() bool {
-	httpClient := &http.Client{}
-	req, err := http.NewRequest("GET", "http://instance-data.ec2.internal", nil)
+func isEC2Instance(ctx context.Context) bool {
+	httpClient := &http.Client{Timeout: 1 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, "GET", "http://instance-data.ec2.internal", nil)
 	if err != nil {
 		return false
 	}
@@ -88,8 +88,8 @@ func NewProvider(ctx context.Context, withFolder bool, log log.Logger) (*AwsProv
 }
 
 func configureDefaults(ctx context.Context, cfg aws.Config, config *options.Options, log log.Logger) error {
-	isEC2 := isEC2Instance()
 	log.Debugf("running in EC2 instance: %v", isEC2)
+	isEC2 := isEC2Instance(ctx)
 
 	if config.DiskImage == "" && !isEC2 {
 		if err := setDefaultAMI(ctx, cfg, config, log); err != nil {
