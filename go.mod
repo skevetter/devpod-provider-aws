@@ -10,10 +10,9 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/iam v1.53.5
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.62.3
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.8
-	github.com/aws/smithy-go v1.24.2
 	github.com/goccy/go-yaml v1.19.2
 	github.com/sirupsen/logrus v1.9.4
-	github.com/skevetter/devpod v0.16.2
+	github.com/skevetter/devpod v0.16.3
 	github.com/skevetter/log v0.0.0-20260106023547-bfd26ab1367c
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto v0.49.0
@@ -38,6 +37,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/signin v1.0.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.12 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.16 // indirect
+	github.com/aws/smithy-go v1.24.2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.10.0 // indirect
