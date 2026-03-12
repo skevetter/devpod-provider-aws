@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/skevetter/devpod-provider-aws/pkg/aws"
@@ -37,17 +38,11 @@ func (cmd *StartCmd) Run(ctx context.Context, providerAws *aws.AwsProvider) erro
 		providerAws.Config.MachineID,
 	)
 	if err != nil {
+		if errors.Is(err, aws.ErrInstanceNotFound) {
+			return fmt.Errorf("no stopped instance %s found", providerAws.Config.MachineID)
+		}
 		return err
 	}
 
-	if instance.Status != "" {
-		err = aws.Start(ctx, providerAws, instance.InstanceID)
-		if err != nil {
-			return err
-		}
-	} else {
-		return fmt.Errorf("no stopped instance %s found", providerAws.Config.MachineID)
-	}
-
-	return nil
+	return aws.Start(ctx, providerAws, instance.InstanceID)
 }

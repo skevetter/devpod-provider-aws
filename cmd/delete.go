@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
 	"github.com/skevetter/devpod-provider-aws/pkg/aws"
 	"github.com/skevetter/log"
@@ -37,17 +37,11 @@ func (cmd *DeleteCmd) Run(ctx context.Context, providerAws *aws.AwsProvider) err
 		providerAws.Config.MachineID,
 	)
 	if err != nil {
+		if errors.Is(err, aws.ErrInstanceNotFound) {
+			return nil
+		}
 		return err
 	}
 
-	if instance.Status != "" {
-		err = aws.Delete(ctx, providerAws, instance)
-		if err != nil {
-			return err
-		}
-	} else {
-		return fmt.Errorf("no devpod instance %s found", providerAws.Config.MachineID)
-	}
-
-	return nil
+	return aws.Delete(ctx, providerAws, instance)
 }

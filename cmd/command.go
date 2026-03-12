@@ -53,9 +53,6 @@ func (cmd *CommandCmd) Run(ctx context.Context, providerAws *aws.AwsProvider) er
 	if err != nil {
 		return err
 	}
-	if instance.Status == "" {
-		return fmt.Errorf("instance %s doesn't exist", providerAws.Config.MachineID)
-	}
 
 	strategy := cmd.selectStrategy(providerAws.Config)
 	defer func() { _ = strategy.Close() }()

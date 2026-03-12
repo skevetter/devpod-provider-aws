@@ -38,6 +38,9 @@ const (
 	iamSSMKMSDecryptPolicyName = "ssm-kms-decrypt-policy"
 )
 
+// ErrInstanceNotFound is returned when no matching EC2 instance exists.
+var ErrInstanceNotFound = errors.New("instance not found")
+
 // detect if we're in an ec2 instance
 func isEC2Instance(ctx context.Context) bool {
 	httpClient := &http.Client{Timeout: 1 * time.Second}
@@ -827,7 +830,7 @@ func GetInstance(
 	})
 
 	if len(result.Reservations) == 0 || len(result.Reservations[0].Instances) == 0 {
-		return types.Instance{}, fmt.Errorf("instance %s not found", name)
+		return types.Instance{}, ErrInstanceNotFound
 	}
 	return result.Reservations[0].Instances[0], nil
 }
@@ -1039,12 +1042,10 @@ func Status(ctx context.Context, provider *AwsProvider, name string) (client.Sta
 
 	result, err := GetDevpodInstance(ctx, provider.AwsConfig, name)
 	if err != nil {
+		if errors.Is(err, ErrInstanceNotFound) {
+			return client.StatusNotFound, nil
+		}
 		return client.StatusNotFound, fmt.Errorf("get instance: %w", err)
-	}
-
-	if result.Status == "" {
-		provider.Log.Debugf("machine %s not found", name)
-		return client.StatusNotFound, nil
 	}
 
 	status := result.Status
@@ -1073,9 +1074,9 @@ func Describe(ctx context.Context, provider *AwsProvider, name string) (string, 
 		return client.DescriptionNotFound, err
 	}
 
-	instanceBytes, err := json.MarshalIndent(instance, "", "  ") // #nosec G117
+	instanceBytes, err := json.MarshalIndent(instance, "", "  ")
 	if err != nil {
-		return client.DescriptionNotFound, err
+		return "", err
 	}
 
 	description := string(instanceBytes)
