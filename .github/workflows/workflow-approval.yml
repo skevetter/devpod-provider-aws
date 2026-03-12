@@ -1,0 +1,16 @@
+name: Automatic Approve Workflow
+
+on:
+  workflow_dispatch:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  automatic-approve:
+    name: Approve Workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: mheap/automatic-approve-action@v1
+        with:
+          token: ${{ secrets.GH_ACCESS_TOKEN }}
+          workflows: "commit.yml,lint.yml,pre-commit.yml"
