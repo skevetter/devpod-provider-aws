@@ -1071,12 +1071,15 @@ func Describe(ctx context.Context, provider *AwsProvider, name string) (string, 
 
 	instance, err := GetInstance(ctx, provider.AwsConfig, name, anyState())
 	if err != nil {
-		return client.DescriptionNotFound, err
+		if errors.Is(err, ErrInstanceNotFound) {
+			return client.DescriptionNotFound, nil
+		}
+		return "", fmt.Errorf("describe instance: %w", err)
 	}
 
 	instanceBytes, err := json.MarshalIndent(instance, "", "  ") // #nosec G117
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("marshal instance description: %w", err)
 	}
 
 	description := string(instanceBytes)
