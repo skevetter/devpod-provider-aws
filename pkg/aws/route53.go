@@ -43,7 +43,10 @@ func findRoute53ZoneByName(
 	for _, zone := range listZonesOut.HostedZones {
 		if *zone.Name == zoneName {
 			return route53Zone{
-				id:      *zone.Id,
+				id: strings.TrimPrefix(
+					*zone.Id,
+					"/"+string(r53types.TagResourceTypeHostedzone)+"/",
+				),
 				Name:    zoneName,
 				private: zone.Config.PrivateZone,
 			}, nil
@@ -59,6 +62,7 @@ func detectRoute53ZoneByTag(
 ) (route53Zone, error) {
 	truncated := true
 	var marker *string
+	var allMatches []route53Zone
 
 	for truncated {
 		hostedZoneList, err := r53client.ListHostedZones(ctx, &route53.ListHostedZonesInput{
@@ -69,26 +73,38 @@ func detectRoute53ZoneByTag(
 			return route53Zone{}, fmt.Errorf("list hosted zones: %w", err)
 		}
 
-		zone, found, err := findTaggedZone(ctx, r53client, hostedZoneList.HostedZones)
+		pageMatches, err := findTaggedZones(ctx, r53client, hostedZoneList.HostedZones)
 		if err != nil {
 			return route53Zone{}, err
 		}
-		if found {
-			return zone, nil
-		}
+		allMatches = append(allMatches, pageMatches...)
 
 		truncated = hostedZoneList.IsTruncated
 		marker = hostedZoneList.NextMarker
 	}
 
-	return route53Zone{}, nil
+	switch len(allMatches) {
+	case 0:
+		return route53Zone{}, nil
+	case 1:
+		return allMatches[0], nil
+	default:
+		return route53Zone{}, fmt.Errorf(
+			"found %d hosted zones tagged with devpod=devpod, expected exactly one",
+			len(allMatches),
+		)
+	}
 }
 
-func findTaggedZone(
+func findTaggedZones(
 	ctx context.Context,
 	r53client *route53.Client,
 	zones []r53types.HostedZone,
-) (route53Zone, bool, error) {
+) ([]route53Zone, error) {
+	if len(zones) == 0 {
+		return nil, nil
+	}
+
 	hostedZoneById := make(map[string]*r53types.HostedZone, len(zones))
 	ids := make([]string, 0, len(zones))
 	for _, hostedZone := range zones {
@@ -105,22 +121,10 @@ func findTaggedZone(
 		ResourceIds:  ids,
 	})
 	if err != nil {
-		return route53Zone{}, false, fmt.Errorf("list tags for resources: %w", err)
+		return nil, fmt.Errorf("list tags for resources: %w", err)
 	}
 
-	matches := collectDevpodZones(resources.ResourceTagSets, hostedZoneById)
-
-	switch len(matches) {
-	case 0:
-		return route53Zone{}, false, nil
-	case 1:
-		return matches[0], true, nil
-	default:
-		return route53Zone{}, false, fmt.Errorf(
-			"found %d hosted zones tagged with devpod=devpod, expected exactly one",
-			len(matches),
-		)
-	}
+	return collectDevpodZones(resources.ResourceTagSets, hostedZoneById), nil
 }
 
 func collectDevpodZones(
