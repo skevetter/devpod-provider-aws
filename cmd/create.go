@@ -28,17 +28,8 @@ func NewCreateCmd() *cobra.Command {
 	}
 }
 
-// Run runs the command logic
+// Run runs the command logic.
 func (cmd *CreateCmd) Run(ctx context.Context, providerAws *aws.AwsProvider) error {
-	_, err := aws.GetDevpodSecurityGroups(ctx, providerAws, providerAws.Config.VpcID)
-	if err != nil {
-		return err
-	}
-
-	_, err = aws.Create(ctx, providerAws.AwsConfig, providerAws)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	_, err := aws.Create(ctx, providerAws.AwsConfig, providerAws)
+	return err
 }

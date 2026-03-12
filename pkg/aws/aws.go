@@ -268,8 +268,7 @@ func GetSubnet(ctx context.Context, provider *AwsProvider) (subnetResult, error)
 		provider.Config.VpcID, provider.Config.AvailabilityZone, provider.Config.SubnetIDs)
 
 	if len(provider.Config.SubnetIDs) == 1 {
-		provider.Log.Debugf("using configured subnet %s", provider.Config.SubnetIDs[0])
-		return subnetResult{subnetID: provider.Config.SubnetIDs[0]}, nil
+		return describeSubnetResult(ctx, provider, provider.Config.SubnetIDs[0])
 	}
 
 	if len(provider.Config.SubnetIDs) > 1 {
@@ -332,6 +331,25 @@ func selectSubnetWithMostIPs(subnets []types.Subnet, az string) *types.Subnet {
 		}
 	}
 	return selected
+}
+
+func describeSubnetResult(
+	ctx context.Context,
+	provider *AwsProvider,
+	subnetID string,
+) (subnetResult, error) {
+	svc := ec2.NewFromConfig(provider.AwsConfig)
+	out, err := svc.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
+		SubnetIds: []string{subnetID},
+	})
+	if err != nil {
+		return subnetResult{}, fmt.Errorf("describe subnet %s: %w", subnetID, err)
+	}
+	if len(out.Subnets) == 0 {
+		return subnetResult{}, fmt.Errorf("subnet %s not found", subnetID)
+	}
+	provider.Log.Debugf("using configured subnet %s (vpc: %s)", subnetID, *out.Subnets[0].VpcId)
+	return subnetResultFrom(&out.Subnets[0]), nil
 }
 
 func subnetResultFrom(s *types.Subnet) subnetResult {
@@ -763,8 +781,11 @@ func GetDevpodSecurityGroups(
 	}
 
 	result, err := svc.DescribeSecurityGroups(ctx, input)
-	// If it is not created, do it.
-	if result == nil || len(result.SecurityGroups) == 0 || err != nil {
+	if err != nil {
+		return nil, fmt.Errorf("describe security groups: %w", err)
+	}
+
+	if len(result.SecurityGroups) == 0 {
 		sg, err := CreateDevpodSecurityGroup(ctx, provider, vpcID)
 		if err != nil {
 			return nil, err

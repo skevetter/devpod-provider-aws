@@ -40,20 +40,32 @@ func findRoute53ZoneByName(
 		zoneName += "."
 	}
 
+	var matches []route53Zone
 	for _, zone := range listZonesOut.HostedZones {
 		if *zone.Name == zoneName {
-			return route53Zone{
+			matches = append(matches, route53Zone{
 				id: strings.TrimPrefix(
 					*zone.Id,
 					"/"+string(r53types.TagResourceTypeHostedzone)+"/",
 				),
 				Name:    zoneName,
 				private: zone.Config.PrivateZone,
-			}, nil
+			})
 		}
 	}
 
-	return route53Zone{}, fmt.Errorf("unable to find Route53 zone %s", name)
+	switch len(matches) {
+	case 0:
+		return route53Zone{}, fmt.Errorf("unable to find Route53 zone %s", name)
+	case 1:
+		return matches[0], nil
+	default:
+		return route53Zone{}, fmt.Errorf(
+			"found %d hosted zones matching %s, expected exactly one",
+			len(matches),
+			name,
+		)
+	}
 }
 
 func detectRoute53ZoneByTag(
@@ -116,15 +128,34 @@ func findTaggedZones(
 		ids = append(ids, id)
 	}
 
-	resources, err := r53client.ListTagsForResources(ctx, &route53.ListTagsForResourcesInput{
-		ResourceType: r53types.TagResourceTypeHostedzone,
-		ResourceIds:  ids,
-	})
+	tagSets, err := listTagsInBatches(ctx, r53client, ids)
 	if err != nil {
-		return nil, fmt.Errorf("list tags for resources: %w", err)
+		return nil, err
 	}
 
-	return collectDevpodZones(resources.ResourceTagSets, hostedZoneById), nil
+	return collectDevpodZones(tagSets, hostedZoneById), nil
+}
+
+const maxTagResourceIDs = 10
+
+func listTagsInBatches(
+	ctx context.Context,
+	r53client *route53.Client,
+	ids []string,
+) ([]r53types.ResourceTagSet, error) {
+	var allTagSets []r53types.ResourceTagSet
+	for i := 0; i < len(ids); i += maxTagResourceIDs {
+		end := min(i+maxTagResourceIDs, len(ids))
+		resp, err := r53client.ListTagsForResources(ctx, &route53.ListTagsForResourcesInput{
+			ResourceType: r53types.TagResourceTypeHostedzone,
+			ResourceIds:  ids[i:end],
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list tags for resources: %w", err)
+		}
+		allTagSets = append(allTagSets, resp.ResourceTagSets...)
+	}
+	return allTagSets, nil
 }
 
 func collectDevpodZones(
