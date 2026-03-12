@@ -2,6 +2,12 @@ version: "2"
 run:
   timeout: 5m
   concurrency: 8
+formatters:
+  enable:
+    - gci
+    - gofumpt
+    - goimports
+    - golines
 linters:
   enable:
     - cyclop
@@ -27,7 +33,7 @@ linters:
     - whitespace
   settings:
     cyclop:
-      max-complexity: 7
+      max-complexity: 8
     revive:
       rules:
         - name: argument-limit

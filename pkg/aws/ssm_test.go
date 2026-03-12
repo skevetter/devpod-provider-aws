@@ -18,9 +18,16 @@ func TestCommandArgsSSMTunneling(t *testing.T) {
 			instanceId: "i-0011223344",
 			localPort:  30114,
 			expect: []string{
-				"ssm", "start-session", "--target", "i-0011223344",
-				"--document-name", "AWS-StartPortForwardingSession",
-				fmt.Sprintf("--parameters={\"portNumber\":[\"22\"],\"localPortNumber\":[\"%d\"]}", 30114),
+				"ssm",
+				"start-session",
+				"--target",
+				"i-0011223344",
+				"--document-name",
+				"AWS-StartPortForwardingSession",
+				fmt.Sprintf(
+					"--parameters={\"portNumber\":[\"22\"],\"localPortNumber\":[\"%d\"]}",
+					30114,
+				),
 			},
 		},
 	}

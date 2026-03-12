@@ -19,11 +19,18 @@ import (
 func GetDevpodRoute53Zone(ctx context.Context, provider *AwsProvider) (route53Zone, error) {
 	r53client := route53.NewFromConfig(provider.AwsConfig)
 	if provider.Config.Route53ZoneName != "" {
-		listZonesOut, err := r53client.ListHostedZonesByName(ctx, &route53.ListHostedZonesByNameInput{
-			DNSName: aws.String(provider.Config.Route53ZoneName),
-		})
+		listZonesOut, err := r53client.ListHostedZonesByName(
+			ctx,
+			&route53.ListHostedZonesByNameInput{
+				DNSName: aws.String(provider.Config.Route53ZoneName),
+			},
+		)
 		if err != nil {
-			return route53Zone{}, fmt.Errorf("find Route53 zone %s: %w", provider.Config.Route53ZoneName, err)
+			return route53Zone{}, fmt.Errorf(
+				"find Route53 zone %s: %w",
+				provider.Config.Route53ZoneName,
+				err,
+			)
 		}
 
 		zoneName := provider.Config.Route53ZoneName
@@ -39,7 +46,10 @@ func GetDevpodRoute53Zone(ctx context.Context, provider *AwsProvider) (route53Zo
 				}, nil
 			}
 		}
-		return route53Zone{}, fmt.Errorf("unable to find Route53 zone %s", provider.Config.Route53ZoneName)
+		return route53Zone{}, fmt.Errorf(
+			"unable to find Route53 zone %s",
+			provider.Config.Route53ZoneName,
+		)
 	}
 
 	truncated := true
@@ -52,7 +62,10 @@ func GetDevpodRoute53Zone(ctx context.Context, provider *AwsProvider) (route53Zo
 		if err != nil {
 			var apiErr smithy.APIError
 			if errors.As(err, &apiErr) && apiErr.ErrorCode() == "AccessDenied" {
-				provider.Log.Debugf("Access denied to list hosted zones, skipping Route53 zone detection: %v", err)
+				provider.Log.Debugf(
+					"Access denied to list hosted zones, skipping Route53 zone detection: %v",
+					err,
+				)
 				return route53Zone{}, nil
 			}
 
@@ -73,8 +86,11 @@ func GetDevpodRoute53Zone(ctx context.Context, provider *AwsProvider) (route53Zo
 			for _, tag := range resourceTagSet.Tags {
 				if *tag.Key == "devpod" && *tag.Value == "devpod" {
 					return route53Zone{
-						id:   *resourceTagSet.ResourceId,
-						Name: strings.TrimSuffix(*hostedZoneById[*resourceTagSet.ResourceId].Name, "."),
+						id: *resourceTagSet.ResourceId,
+						Name: strings.TrimSuffix(
+							*hostedZoneById[*resourceTagSet.ResourceId].Name,
+							".",
+						),
 					}, nil
 				}
 			}
@@ -86,32 +102,54 @@ func GetDevpodRoute53Zone(ctx context.Context, provider *AwsProvider) (route53Zo
 	return route53Zone{}, nil
 }
 
+// route53Record holds the parameters for a Route53 A record upsert.
+type route53Record struct {
+	zoneID   string
+	hostname string
+	ip       string
+}
+
 // UpsertDevpodRoute53Record creates or updates a Route53 A record for the devpod hostname in the specified zone.
-func UpsertDevpodRoute53Record(ctx context.Context, provider *AwsProvider, route53ZoneId string, hostname string, ip string) error {
+func UpsertDevpodRoute53Record(
+	ctx context.Context,
+	provider *AwsProvider,
+	record route53Record,
+) error {
 	r53client := route53.NewFromConfig(provider.AwsConfig)
 	if _, err := r53client.ChangeResourceRecordSets(ctx, &route53.ChangeResourceRecordSetsInput{
-		HostedZoneId: aws.String(route53ZoneId),
+		HostedZoneId: aws.String(record.zoneID),
 		ChangeBatch: &r53types.ChangeBatch{
 			Changes: []r53types.Change{
 				{
 					Action: r53types.ChangeActionUpsert,
 					ResourceRecordSet: &r53types.ResourceRecordSet{
-						Name:            aws.String(hostname),
+						Name:            aws.String(record.hostname),
 						Type:            r53types.RRTypeA,
-						ResourceRecords: []r53types.ResourceRecord{{Value: &ip}},
+						ResourceRecords: []r53types.ResourceRecord{{Value: &record.ip}},
 						TTL:             aws.Int64(300),
 					},
 				},
 			},
 		},
 	}); err != nil {
-		return fmt.Errorf("upsert A record %q in zone %q to value %q: %w", hostname, route53ZoneId, ip, err)
+		return fmt.Errorf(
+			"upsert A record %q in zone %q to value %q: %w",
+			record.hostname,
+			record.zoneID,
+			record.ip,
+			err,
+		)
 	}
 	return nil
 }
 
 // DeleteDevpodRoute53Record deletes a Route53 A record for the devpod hostname in the specified zone.
-func DeleteDevpodRoute53Record(ctx context.Context, provider *AwsProvider, zone route53Zone, machine Machine) error {
+func DeleteDevpodRoute53Record(
+	ctx context.Context,
+	provider *AwsProvider,
+	zone route53Zone,
+	machine Machine,
+) error {
 	ip := machine.PrivateIP
 	if !zone.private {
 		ip = machine.PublicIP
@@ -140,10 +178,22 @@ func DeleteDevpodRoute53Record(ctx context.Context, provider *AwsProvider, zone 
 	}); err != nil {
 		var recordNotFoundErr *r53types.InvalidChangeBatch
 		if errors.As(err, &recordNotFoundErr) {
-			provider.Log.Warnf("A record %q in zone %q with value %q not found, skipping deletion: %v", machine.Hostname, zone.id, ip, err)
+			provider.Log.Warnf(
+				"A record %q in zone %q with value %q not found, skipping deletion: %v",
+				machine.Hostname,
+				zone.id,
+				ip,
+				err,
+			)
 			return nil
 		}
-		return fmt.Errorf("delete A record %q in zone %q with value %q: %w", machine.Hostname, zone.id, ip, err)
+		return fmt.Errorf(
+			"delete A record %q in zone %q with value %q: %w",
+			machine.Hostname,
+			zone.id,
+			ip,
+			err,
+		)
 	}
 	return nil
 }

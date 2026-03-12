@@ -49,7 +49,11 @@ func (cmd *CommandCmd) Run(ctx context.Context, providerAws *aws.AwsProvider) er
 		return fmt.Errorf("load private key: %w", err)
 	}
 
-	instance, err := aws.GetDevpodRunningInstance(ctx, providerAws.AwsConfig, providerAws.Config.MachineID)
+	instance, err := aws.GetDevpodRunningInstance(
+		ctx,
+		providerAws.AwsConfig,
+		providerAws.Config.MachineID,
+	)
 	if err != nil {
 		return err
 	}
@@ -104,7 +108,11 @@ type DirectSSHStrategy struct {
 	client *gossh.Client
 }
 
-func (s *DirectSSHStrategy) Connect(ctx context.Context, instance *aws.Machine, privateKey []byte) (*gossh.Client, error) {
+func (s *DirectSSHStrategy) Connect(
+	ctx context.Context,
+	instance *aws.Machine,
+	privateKey []byte,
+) (*gossh.Client, error) {
 	host := instance.Host()
 	client, err := ssh.NewSSHClient("devpod", host+":22", privateKey)
 	if err != nil {
@@ -131,7 +139,11 @@ type InstanceConnectStrategy struct {
 	endpointID string
 }
 
-func (s *InstanceConnectStrategy) Connect(ctx context.Context, instance *aws.Machine, privateKey []byte) (*gossh.Client, error) {
+func (s *InstanceConnectStrategy) Connect(
+	ctx context.Context,
+	instance *aws.Machine,
+	privateKey []byte,
+) (*gossh.Client, error) {
 	s.name = "instance-connect"
 
 	port, err := findAvailablePort()
@@ -139,7 +151,14 @@ func (s *InstanceConnectStrategy) Connect(ctx context.Context, instance *aws.Mac
 		return nil, fmt.Errorf("%s: %w", s.name, err)
 	}
 
-	args := []string{"ec2-instance-connect", "open-tunnel", "--instance-id", instance.InstanceID, "--local-port", strconv.Itoa(port)}
+	args := []string{
+		"ec2-instance-connect",
+		"open-tunnel",
+		"--instance-id",
+		instance.InstanceID,
+		"--local-port",
+		strconv.Itoa(port),
+	}
 	if s.endpointID != "" {
 		args = append(args, "--instance-connect-endpoint-id", s.endpointID)
 	}
@@ -163,7 +182,11 @@ type SessionManagerStrategy struct {
 	baseTunnelStrategy
 }
 
-func (s *SessionManagerStrategy) Connect(ctx context.Context, instance *aws.Machine, privateKey []byte) (*gossh.Client, error) {
+func (s *SessionManagerStrategy) Connect(
+	ctx context.Context,
+	instance *aws.Machine,
+	privateKey []byte,
+) (*gossh.Client, error) {
 	s.name = "session-manager"
 
 	port, err := findAvailablePort()

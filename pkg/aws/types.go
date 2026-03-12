@@ -56,7 +56,6 @@ func NewMachineFromInstance(instance types.Instance) Machine {
 		Status:                string(instance.State.Name),
 		SpotInstanceRequestId: spotInstanceRequestID,
 	}
-
 }
 
 // PolicyDocument represents an IAM policy document
