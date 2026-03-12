@@ -48,7 +48,7 @@ func findRoute53ZoneByName(
 					*zone.Id,
 					"/"+string(r53types.TagResourceTypeHostedzone)+"/",
 				),
-				Name:    zoneName,
+				Name:    strings.TrimSuffix(zoneName, "."),
 				private: zone.Config.PrivateZone,
 			})
 		}

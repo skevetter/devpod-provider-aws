@@ -1061,7 +1061,7 @@ func Create(
 			result.Instances[0],
 		)
 		if err != nil {
-			terminateOnCleanup(ctx, providerAws, *result.Instances[0].InstanceId)
+			terminateOnCleanup(providerAws, *result.Instances[0].InstanceId)
 			return Machine{}, fmt.Errorf("create Route53 record: %w", err)
 		}
 		machine.PublicIP = resolvedIP
@@ -1353,8 +1353,10 @@ func Describe(ctx context.Context, provider *AwsProvider, name string) (string, 
 	return description, nil
 }
 
-func terminateOnCleanup(ctx context.Context, provider *AwsProvider, instanceID string) {
+func terminateOnCleanup(provider *AwsProvider, instanceID string) {
 	provider.Log.Debugf("terminating orphaned instance %s", instanceID)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	defer cancel()
 	svc := ec2.NewFromConfig(provider.AwsConfig)
 	_, err := svc.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
 		InstanceIds: []string{instanceID},
