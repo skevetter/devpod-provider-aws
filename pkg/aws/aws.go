@@ -1074,7 +1074,7 @@ func Describe(ctx context.Context, provider *AwsProvider, name string) (string, 
 		return client.DescriptionNotFound, err
 	}
 
-	instanceBytes, err := json.MarshalIndent(instance, "", "  ")
+	instanceBytes, err := json.MarshalIndent(instance, "", "  ") // #nosec G117
 	if err != nil {
 		return "", err
 	}
