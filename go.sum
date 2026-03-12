@@ -455,6 +455,8 @@ github.com/skevetter/devpod v0.15.0 h1:dc479DmmBakgD1yZlfs5geog+tG9V9vnnheeiA+vi
 github.com/skevetter/devpod v0.15.0/go.mod h1:H10bmhBiWmCb1Bn2R8pes6Tn7SCWBJ5KXvxQzVJ0plQ=
 github.com/skevetter/devpod v0.16.1 h1:hXVaI7yi/Ecpx6hKewU+DgQqP5828vMCJAzml9s2ozE=
 github.com/skevetter/devpod v0.16.1/go.mod h1:4DnJuhaFx5JozFpCDwItKo2tHIIqux72FYfqJyknYcc=
+github.com/skevetter/devpod v0.16.2 h1:a5lZHciq3F9fqxEBfokMs4qoQdX4WeoOXlw5Dl5xnf0=
+github.com/skevetter/devpod v0.16.2/go.mod h1:UfStAsPjAodSiqWSWOE1B67rkWd+BJPe7EmKVFwyyVQ=
 github.com/skevetter/log v0.0.0-20260106023547-bfd26ab1367c h1:2IjLo9V6TLV2rORRKKu+NVMSrOAEeuS4KJPk3v9e1rs=
 github.com/skevetter/log v0.0.0-20260106023547-bfd26ab1367c/go.mod h1:Aqjwx8xRSxBWtTYXK3EzxManSgYZl7FaSh8J5LvTAK0=
 github.com/soheilhy/cmux v0.1.5 h1:jjzc5WVemNEDTLwv9tlmemhC73tI08BNOIGwBOo10Js=
