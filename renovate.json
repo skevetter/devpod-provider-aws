@@ -12,6 +12,9 @@
     "dependencyDashboard": false,
     "prConcurrentLimit": 1,
     "platformAutomerge": true,
+    "postUpdateOptions": [
+        "gomodTidy"
+    ],
     "packageRules": [
         {
             "matchUpdateTypes": [
