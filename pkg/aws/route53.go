@@ -19,87 +19,116 @@ import (
 func GetDevpodRoute53Zone(ctx context.Context, provider *AwsProvider) (route53Zone, error) {
 	r53client := route53.NewFromConfig(provider.AwsConfig)
 	if provider.Config.Route53ZoneName != "" {
-		listZonesOut, err := r53client.ListHostedZonesByName(
-			ctx,
-			&route53.ListHostedZonesByNameInput{
-				DNSName: aws.String(provider.Config.Route53ZoneName),
-			},
-		)
-		if err != nil {
-			return route53Zone{}, fmt.Errorf(
-				"find Route53 zone %s: %w",
-				provider.Config.Route53ZoneName,
-				err,
-			)
-		}
-
-		zoneName := provider.Config.Route53ZoneName
-		if !strings.HasSuffix(zoneName, ".") {
-			zoneName += "."
-		}
-		for _, zone := range listZonesOut.HostedZones {
-			if *zone.Name == zoneName {
-				return route53Zone{
-					id:      *zone.Id,
-					Name:    zoneName,
-					private: zone.Config.PrivateZone,
-				}, nil
-			}
-		}
-		return route53Zone{}, fmt.Errorf(
-			"unable to find Route53 zone %s",
-			provider.Config.Route53ZoneName,
-		)
+		return findRoute53ZoneByName(ctx, r53client, provider.Config.Route53ZoneName)
 	}
 
+	return detectRoute53ZoneByTag(ctx, r53client, provider)
+}
+
+func findRoute53ZoneByName(
+	ctx context.Context,
+	r53client *route53.Client,
+	name string,
+) (route53Zone, error) {
+	listZonesOut, err := r53client.ListHostedZonesByName(
+		ctx,
+		&route53.ListHostedZonesByNameInput{DNSName: aws.String(name)},
+	)
+	if err != nil {
+		return route53Zone{}, fmt.Errorf("find Route53 zone %s: %w", name, err)
+	}
+
+	zoneName := name
+	if !strings.HasSuffix(zoneName, ".") {
+		zoneName += "."
+	}
+
+	for _, zone := range listZonesOut.HostedZones {
+		if *zone.Name == zoneName {
+			return route53Zone{
+				id:      *zone.Id,
+				Name:    zoneName,
+				private: zone.Config.PrivateZone,
+			}, nil
+		}
+	}
+
+	return route53Zone{}, fmt.Errorf("unable to find Route53 zone %s", name)
+}
+
+func detectRoute53ZoneByTag(
+	ctx context.Context,
+	r53client *route53.Client,
+	provider *AwsProvider,
+) (route53Zone, error) {
 	truncated := true
 	var marker *string
+
 	for truncated {
 		hostedZoneList, err := r53client.ListHostedZones(ctx, &route53.ListHostedZonesInput{
 			MaxItems: aws.Int32(100),
 			Marker:   marker,
 		})
 		if err != nil {
-			var apiErr smithy.APIError
-			if errors.As(err, &apiErr) && apiErr.ErrorCode() == "AccessDenied" {
-				provider.Log.Debugf(
-					"Access denied to list hosted zones, skipping Route53 zone detection: %v",
-					err,
-				)
-				return route53Zone{}, nil
-			}
+			return route53Zone{}, handleListZonesError(err, provider)
+		}
 
-			return route53Zone{}, fmt.Errorf("list hosted zones: %w", err)
-		}
-		hostedZoneById := make(map[string]*r53types.HostedZone)
-		for _, hostedZone := range hostedZoneList.HostedZones {
-			hostedZoneById[strings.TrimPrefix(*hostedZone.Id, "/"+string(r53types.TagResourceTypeHostedzone)+"/")] = &hostedZone
-		}
-		resources, err := r53client.ListTagsForResources(ctx, &route53.ListTagsForResourcesInput{
-			ResourceType: r53types.TagResourceTypeHostedzone,
-			ResourceIds:  slices.Collect(maps.Keys(hostedZoneById)),
-		})
-		if err != nil {
-			return route53Zone{}, fmt.Errorf("list tags for resources: %w", err)
-		}
-		for _, resourceTagSet := range resources.ResourceTagSets {
-			for _, tag := range resourceTagSet.Tags {
-				if *tag.Key == "devpod" && *tag.Value == "devpod" {
-					return route53Zone{
-						id: *resourceTagSet.ResourceId,
-						Name: strings.TrimSuffix(
-							*hostedZoneById[*resourceTagSet.ResourceId].Name,
-							".",
-						),
-					}, nil
-				}
-			}
+		if zone, found := findTaggedZone(ctx, r53client, hostedZoneList.HostedZones); found {
+			return zone, nil
 		}
 
 		truncated = hostedZoneList.IsTruncated
 		marker = hostedZoneList.NextMarker
 	}
+
 	return route53Zone{}, nil
+}
+
+func handleListZonesError(err error, provider *AwsProvider) error {
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) && apiErr.ErrorCode() == "AccessDenied" {
+		provider.Log.Debugf(
+			"Access denied to list hosted zones, skipping Route53 zone detection: %v",
+			err,
+		)
+		return nil
+	}
+
+	return fmt.Errorf("list hosted zones: %w", err)
+}
+
+func findTaggedZone(
+	ctx context.Context,
+	r53client *route53.Client,
+	zones []r53types.HostedZone,
+) (route53Zone, bool) {
+	hostedZoneById := make(map[string]*r53types.HostedZone, len(zones))
+	for _, hostedZone := range zones {
+		hostedZoneById[strings.TrimPrefix(*hostedZone.Id, "/"+string(r53types.TagResourceTypeHostedzone)+"/")] = &hostedZone
+	}
+
+	resources, err := r53client.ListTagsForResources(ctx, &route53.ListTagsForResourcesInput{
+		ResourceType: r53types.TagResourceTypeHostedzone,
+		ResourceIds:  slices.Collect(maps.Keys(hostedZoneById)),
+	})
+	if err != nil {
+		return route53Zone{}, false
+	}
+
+	for _, resourceTagSet := range resources.ResourceTagSets {
+		for _, tag := range resourceTagSet.Tags {
+			if *tag.Key == tagKeyDevpod && *tag.Value == tagKeyDevpod {
+				hz := hostedZoneById[*resourceTagSet.ResourceId]
+				return route53Zone{
+					id:      *resourceTagSet.ResourceId,
+					Name:    strings.TrimSuffix(*hz.Name, "."),
+					private: hz.Config.PrivateZone,
+				}, true
+			}
+		}
+	}
+
+	return route53Zone{}, false
 }
 
 // route53Record holds the parameters for a Route53 A record upsert.

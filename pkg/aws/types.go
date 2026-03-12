@@ -11,23 +11,7 @@ type Machine struct {
 	Hostname              string
 }
 
-func (m Machine) Host() string {
-	if m.Hostname != "" {
-		return m.Hostname
-	}
-	if m.PublicIP != "" {
-		return m.PublicIP
-	}
-	return m.PrivateIP
-}
-
-type route53Zone struct {
-	id      string
-	Name    string
-	private bool
-}
-
-// NewMachineFromInstance creates a new Machine struct from an AWS ec2 Instance struct
+// NewMachineFromInstance creates a new Machine struct from an AWS ec2 Instance struct.
 func NewMachineFromInstance(instance types.Instance) Machine {
 	var hostname string
 	for _, t := range instance.Tags {
@@ -58,13 +42,29 @@ func NewMachineFromInstance(instance types.Instance) Machine {
 	}
 }
 
-// PolicyDocument represents an IAM policy document
+func (m Machine) Host() string {
+	if m.Hostname != "" {
+		return m.Hostname
+	}
+	if m.PublicIP != "" {
+		return m.PublicIP
+	}
+	return m.PrivateIP
+}
+
+type route53Zone struct {
+	id      string
+	Name    string
+	private bool
+}
+
+// PolicyDocument represents an IAM policy document.
 type PolicyDocument struct {
 	Version   string            `json:"Version"`
 	Statement []PolicyStatement `json:"Statement"`
 }
 
-// PolicyStatement represents a statement in an IAM policy
+// PolicyStatement represents a statement in an IAM policy.
 type PolicyStatement struct {
 	Sid       string           `json:"Sid,omitempty"`
 	Effect    string           `json:"Effect"`
@@ -74,13 +74,13 @@ type PolicyStatement struct {
 	Condition map[string]any   `json:"Condition,omitempty"`
 }
 
-// PolicyPrincipal represents the principal in a policy statement
+// PolicyPrincipal represents the principal in a policy statement.
 type PolicyPrincipal struct {
 	Service any `json:"Service,omitempty"` // string or []string
 	AWS     any `json:"AWS,omitempty"`     // string or []string
 }
 
-// NewEC2AssumeRolePolicy returns the trust policy for EC2 to assume the role
+// NewEC2AssumeRolePolicy returns the trust policy for EC2 to assume the role.
 func NewEC2AssumeRolePolicy() PolicyDocument {
 	return PolicyDocument{
 		Version: "2012-10-17",
@@ -96,7 +96,7 @@ func NewEC2AssumeRolePolicy() PolicyDocument {
 	}
 }
 
-// NewDevPodEC2Policy returns the policy allowing EC2 instance to describe and stop itself
+// NewDevPodEC2Policy returns the policy allowing EC2 instance to describe and stop itself.
 func NewDevPodEC2Policy() PolicyDocument {
 	return PolicyDocument{
 		Version: "2012-10-17",
@@ -122,7 +122,7 @@ func NewDevPodEC2Policy() PolicyDocument {
 	}
 }
 
-// NewSSMKMSDecryptPolicy returns the policy allowing SSM to decrypt with the specified KMS key
+// NewSSMKMSDecryptPolicy returns the policy allowing SSM to decrypt with the specified KMS key.
 func NewSSMKMSDecryptPolicy(kmsArn string) PolicyDocument {
 	return PolicyDocument{
 		Version: "2012-10-17",
