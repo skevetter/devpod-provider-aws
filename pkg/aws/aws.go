@@ -1083,7 +1083,7 @@ func buildRunInstancesInput(
 	if err != nil {
 		return nil, route53Zone{}, err
 	}
-	userData, err := GetInjectKeypairScript(providerAws.Config.MachineFolder)
+	userData, err := GetInjectKeypairScript(providerAws.Config.MachineFolder, providerAws.Config)
 	if err != nil {
 		return nil, route53Zone{}, err
 	}
@@ -1122,6 +1122,7 @@ func buildRunInstancesInput(
 
 	applyNestedVirtualization(providerAws, instance)
 	applySpotInstance(providerAws, instance)
+	applyDataVolume(providerAws, instance)
 
 	if err := applyInstanceProfile(ctx, providerAws, instance); err != nil {
 		return nil, route53Zone{}, err
@@ -1181,6 +1182,35 @@ func applySpotInstance(providerAws *AwsProvider, instance *ec2.RunInstancesInput
 		MarketType:  "spot",
 		SpotOptions: spotOpts,
 	}
+}
+
+// applyDataVolume adds an optional secondary EBS volume to the instance.
+// When a snapshot ID is provided, the volume is restored from that snapshot,
+// enabling fast workspace recovery without re-running lengthy setup steps.
+func applyDataVolume(providerAws *AwsProvider, instance *ec2.RunInstancesInput) {
+	cfg := providerAws.Config
+	if cfg.DataVolumeSnapshotID == "" && cfg.DataVolumeSizeGB == 0 {
+		return
+	}
+
+	mapping := types.BlockDeviceMapping{
+		DeviceName: aws.String(cfg.DataVolumeDevice),
+		Ebs:        &types.EbsBlockDevice{},
+	}
+
+	if cfg.DataVolumeSnapshotID != "" {
+		providerAws.Log.Debugf("attaching data volume from snapshot %s", cfg.DataVolumeSnapshotID)
+		mapping.Ebs.SnapshotId = aws.String(cfg.DataVolumeSnapshotID)
+	}
+
+	if cfg.DataVolumeSizeGB > 0 {
+		size, _ := validatedDiskSize(cfg.DataVolumeSizeGB)
+		mapping.Ebs.VolumeSize = &size
+	}
+
+	instance.BlockDeviceMappings = append(instance.BlockDeviceMappings, mapping)
+	providerAws.Log.Debugf("data volume configured: device=%s mount=%s",
+		cfg.DataVolumeDevice, cfg.DataVolumeMountPath)
 }
 
 func applyInstanceProfile(
@@ -1409,7 +1439,7 @@ func Delete(ctx context.Context, provider *AwsProvider, machine Machine) error {
 	return nil
 }
 
-func GetInjectKeypairScript(dir string) (string, error) {
+func GetInjectKeypairScript(dir string, config *options.Options) (string, error) {
 	publicKeyBase, err := ssh.GetPublicKeyBase(dir)
 	if err != nil {
 		return "", err
@@ -1434,6 +1464,18 @@ echo "` + string(publicKey) + `" >> /home/devpod/.ssh/authorized_keys
 chmod 0700 /home/devpod/.ssh
 chmod 0600 /home/devpod/.ssh/authorized_keys
 chown -R devpod:devpod /home/devpod`
+
+	if config != nil && (config.DataVolumeSnapshotID != "" || config.DataVolumeSizeGB > 0) {
+		resultScript += fmt.Sprintf(`
+
+# Mount secondary data volume
+mkdir -p %[2]s
+if ! blkid %[1]s >/dev/null 2>&1; then
+  mkfs.ext4 -q %[1]s
+fi
+mount %[1]s %[2]s
+chown devpod:devpod %[2]s`, config.DataVolumeDevice, config.DataVolumeMountPath)
+	}
 
 	return base64.StdEncoding.EncodeToString([]byte(resultScript)), nil
 }

@@ -184,6 +184,10 @@ func buildOptionGroups() []OptionGroup {
 				"AWS_ROUTE53_ZONE_NAME",
 				"AWS_AVAILABILITY_ZONE",
 				"AWS_USE_NESTED_VIRTUALIZATION",
+				"AWS_DATA_VOLUME_SNAPSHOT_ID",
+				"AWS_DATA_VOLUME_SIZE",
+				"AWS_DATA_VOLUME_DEVICE",
+				"AWS_DATA_VOLUME_MOUNT_PATH",
 			},
 		},
 		{
@@ -596,6 +600,22 @@ func buildOptions() Options {
 		"CUSTOM_AWS_CREDENTIAL_COMMAND": {
 			Description: "Shell command which is executed to get the AWS credentials. The command must return a json containing the keys `AccessKeyID` (required), `SecretAccessKey` (required) and `SessionToken` (optional).",
 			Default:     "",
+		},
+		"AWS_DATA_VOLUME_SNAPSHOT_ID": {
+			Description: "EBS snapshot ID to restore as a secondary data volume. When set, the instance launches with a pre-populated volume, useful for skipping dependency installs, database migrations, and other lengthy setup.",
+			Default:     "",
+		},
+		"AWS_DATA_VOLUME_SIZE": {
+			Description: "Size in GB for the secondary data volume. Required for new blank volumes. When restoring from a snapshot, defaults to the snapshot size but can be set larger.",
+			Default:     "",
+		},
+		"AWS_DATA_VOLUME_DEVICE": {
+			Description: "Device name for the secondary data volume.",
+			Default:     "/dev/xvdf",
+		},
+		"AWS_DATA_VOLUME_MOUNT_PATH": {
+			Description: "Mount path for the secondary data volume inside the instance.",
+			Default:     "/data",
 		},
 	}
 }

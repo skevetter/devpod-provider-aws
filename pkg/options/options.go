@@ -32,6 +32,12 @@ var (
 	AWS_SECRET_ACCESS_KEY               = "AWS_SECRET_ACCESS_KEY"
 	AWS_SESSION_TOKEN                   = "AWS_SESSION_TOKEN"
 	CUSTOM_AWS_CREDENTIAL_COMMAND       = "CUSTOM_AWS_CREDENTIAL_COMMAND"
+
+	// Data volume options (all optional)
+	AWS_DATA_VOLUME_SNAPSHOT_ID = "AWS_DATA_VOLUME_SNAPSHOT_ID"
+	AWS_DATA_VOLUME_SIZE        = "AWS_DATA_VOLUME_SIZE"
+	AWS_DATA_VOLUME_DEVICE      = "AWS_DATA_VOLUME_DEVICE"
+	AWS_DATA_VOLUME_MOUNT_PATH  = "AWS_DATA_VOLUME_MOUNT_PATH"
 )
 
 type Options struct {
@@ -61,6 +67,12 @@ type Options struct {
 	AccessKeyID                string
 	SecretAccessKey            string
 	SessionToken               string
+
+	// Optional secondary data volume
+	DataVolumeSnapshotID string
+	DataVolumeSizeGB     int
+	DataVolumeDevice     string
+	DataVolumeMountPath  string
 }
 
 var strTrue = "true"
@@ -114,6 +126,24 @@ func FromEnv(init, withFolder bool) (*Options, error) {
 	if subnetIDs != "" {
 		for _, subnetID := range strings.Split(subnetIDs, ",") {
 			retOptions.SubnetIDs = append(retOptions.SubnetIDs, strings.TrimSpace(subnetID))
+		}
+	}
+
+	// Optional data volume settings
+	retOptions.DataVolumeSnapshotID = os.Getenv(AWS_DATA_VOLUME_SNAPSHOT_ID)
+	retOptions.DataVolumeDevice = os.Getenv(AWS_DATA_VOLUME_DEVICE)
+	if retOptions.DataVolumeDevice == "" {
+		retOptions.DataVolumeDevice = "/dev/xvdf"
+	}
+	retOptions.DataVolumeMountPath = os.Getenv(AWS_DATA_VOLUME_MOUNT_PATH)
+	if retOptions.DataVolumeMountPath == "" {
+		retOptions.DataVolumeMountPath = "/data"
+	}
+	dataVolSize := os.Getenv(AWS_DATA_VOLUME_SIZE)
+	if dataVolSize != "" {
+		retOptions.DataVolumeSizeGB, err = strconv.Atoi(dataVolSize)
+		if err != nil {
+			return nil, fmt.Errorf("invalid %s: %w", AWS_DATA_VOLUME_SIZE, err)
 		}
 	}
 
