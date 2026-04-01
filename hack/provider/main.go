@@ -602,12 +602,16 @@ func buildOptions() Options {
 			Default:     "",
 		},
 		"AWS_DATA_VOLUME_SNAPSHOT_ID": {
-			Description: "EBS snapshot ID to restore as a secondary data volume. When set, the instance launches with a pre-populated volume, useful for skipping dependency installs, database migrations, and other lengthy setup.",
-			Default:     "",
+			Description: "EBS snapshot ID to restore as a secondary data volume. " +
+				"When set, the instance launches with a pre-populated volume, " +
+				"useful for skipping dependency installs and other lengthy setup.",
+			Default: "",
 		},
 		"AWS_DATA_VOLUME_SIZE": {
-			Description: "Size in GB for the secondary data volume. Required for new blank volumes. When restoring from a snapshot, defaults to the snapshot size but can be set larger.",
-			Default:     "",
+			Description: "Size in GB for the secondary data volume. " +
+				"Required for new blank volumes. " +
+				"When restoring from a snapshot, defaults to the snapshot size.",
+			Default: "",
 		},
 		"AWS_DATA_VOLUME_DEVICE": {
 			Description: "Device name for the secondary data volume.",
