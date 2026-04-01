@@ -1122,7 +1122,9 @@ func buildRunInstancesInput(
 
 	applyNestedVirtualization(providerAws, instance)
 	applySpotInstance(providerAws, instance)
-	applyDataVolume(providerAws, instance)
+	if err := applyDataVolume(providerAws, instance); err != nil {
+		return nil, route53Zone{}, err
+	}
 
 	if err := applyInstanceProfile(ctx, providerAws, instance); err != nil {
 		return nil, route53Zone{}, err
@@ -1187,30 +1189,41 @@ func applySpotInstance(providerAws *AwsProvider, instance *ec2.RunInstancesInput
 // applyDataVolume adds an optional secondary EBS volume to the instance.
 // When a snapshot ID is provided, the volume is restored from that snapshot,
 // enabling fast workspace recovery without re-running lengthy setup steps.
-func applyDataVolume(providerAws *AwsProvider, instance *ec2.RunInstancesInput) {
+func applyDataVolume(
+	providerAws *AwsProvider,
+	instance *ec2.RunInstancesInput,
+) error {
 	cfg := providerAws.Config
-	if cfg.DataVolumeSnapshotID == "" && cfg.DataVolumeSizeGB == 0 {
-		return
+	if cfg.DataVolumeSnapshotID == "" && cfg.DataVolumeSizeGB <= 0 {
+		return nil
 	}
 
 	mapping := types.BlockDeviceMapping{
 		DeviceName: aws.String(cfg.DataVolumeDevice),
-		Ebs:        &types.EbsBlockDevice{},
+		Ebs: &types.EbsBlockDevice{
+			DeleteOnTermination: aws.Bool(true),
+		},
 	}
 
 	if cfg.DataVolumeSnapshotID != "" {
-		providerAws.Log.Debugf("attaching data volume from snapshot %s", cfg.DataVolumeSnapshotID)
+		providerAws.Log.Debugf("attaching data volume from snapshot %s",
+			cfg.DataVolumeSnapshotID)
 		mapping.Ebs.SnapshotId = aws.String(cfg.DataVolumeSnapshotID)
 	}
 
 	if cfg.DataVolumeSizeGB > 0 {
-		size, _ := validatedDiskSize(cfg.DataVolumeSizeGB)
+		size, err := validatedDiskSize(cfg.DataVolumeSizeGB)
+		if err != nil {
+			return fmt.Errorf("invalid data volume size: %w", err)
+		}
 		mapping.Ebs.VolumeSize = &size
 	}
 
 	instance.BlockDeviceMappings = append(instance.BlockDeviceMappings, mapping)
 	providerAws.Log.Debugf("data volume configured: device=%s mount=%s",
 		cfg.DataVolumeDevice, cfg.DataVolumeMountPath)
+
+	return nil
 }
 
 func applyInstanceProfile(
@@ -1468,12 +1481,16 @@ chown -R devpod:devpod /home/devpod`
 	if config != nil && (config.DataVolumeSnapshotID != "" || config.DataVolumeSizeGB > 0) {
 		resultScript += fmt.Sprintf(`
 
-# Mount secondary data volume
+# Mount secondary data volume with persistent fstab entry
 mkdir -p %[2]s
 if ! blkid %[1]s >/dev/null 2>&1; then
   mkfs.ext4 -q %[1]s
 fi
-mount %[1]s %[2]s
+DATA_UUID=$(blkid -s UUID -o value %[1]s)
+if ! grep -q "UUID=$DATA_UUID" /etc/fstab; then
+  echo "UUID=$DATA_UUID %[2]s ext4 defaults,nofail 0 2" >> /etc/fstab
+fi
+mount -a
 chown devpod:devpod %[2]s`, config.DataVolumeDevice, config.DataVolumeMountPath)
 	}
 
