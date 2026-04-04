@@ -1202,6 +1202,7 @@ func applyDataVolume(
 		DeviceName: aws.String(cfg.DataVolumeDevice),
 		Ebs: &types.EbsBlockDevice{
 			DeleteOnTermination: aws.Bool(true),
+			VolumeType:          types.VolumeType(cfg.DataVolumeType),
 		},
 	}
 
@@ -1481,12 +1482,52 @@ chown -R devpod:devpod /home/devpod`
 	if config != nil && (config.DataVolumeSnapshotID != "" || config.DataVolumeSizeGB > 0) {
 		resultScript += fmt.Sprintf(`
 
-# Mount secondary data volume with persistent fstab entry
-mkdir -p %[2]s
-if ! blkid %[1]s >/dev/null 2>&1; then
-  mkfs.ext4 -q %[1]s
+# Mount secondary data volume with persistent fstab entry.
+# On Nitro-based instances, device names like /dev/xvdf are exposed as NVMe
+# devices (/dev/nvme*n1). Amazon Linux creates symlinks automatically, but
+# other distros do not. We resolve via nvme id-ctrl vendor-specific data.
+# See: https://docs.aws.amazon.com/ebs/latest/userguide/nvme-ebs-volumes.html
+# See: https://docs.aws.amazon.com/ebs/latest/userguide/identify-nvme-ebs-device.html
+DATA_DEV=%[1]s
+if [ ! -b "$DATA_DEV" ]; then
+  # On Nitro instances, scan NVMe devices and match by the block device
+  # mapping name stored in the controller's vendor-specific extension.
+  # The name may or may not include the /dev/ prefix depending on whether
+  # the volume was attached at launch or after.
+  EXPECTED_SHORT=$(echo "%[1]s" | sed 's|^/dev/||')
+  for nvmedev in /dev/nvme[0-9]*n1; do
+    [ -b "$nvmedev" ] || continue
+    MAPPED=""
+    # ebsnvme-id (Amazon Linux) outputs: "Volume ID: vol-xxx <device_name>"
+    if command -v ebsnvme-id >/dev/null 2>&1; then
+      MAPPED=$(ebsnvme-id "$nvmedev" 2>/dev/null | head -1 | awk '{print $NF}')
+    elif command -v nvme >/dev/null 2>&1; then
+      # nvme id-ctrl -v shows vendor-specific bytes as hex + ASCII;
+      # the device name appears as ASCII text in the rightmost column.
+      MAPPED=$(nvme id-ctrl -v "$nvmedev" 2>/dev/null \
+        | sed -n '/^vs\[\]/,$ { s/^.*"\(.*\)".*/\1/p }' \
+        | tr -d ' .' | head -1)
+    fi
+    MAPPED_SHORT=$(echo "$MAPPED" | sed 's|^/dev/||')
+    if [ "$MAPPED_SHORT" = "$EXPECTED_SHORT" ]; then
+      DATA_DEV=$nvmedev
+      break
+    fi
+  done
 fi
-DATA_UUID=$(blkid -s UUID -o value %[1]s)
+if [ ! -b "$DATA_DEV" ]; then
+  echo "ERROR: data volume device %[1]s not found (also tried NVMe resolution)" >&2
+  exit 0
+fi
+mkdir -p %[2]s
+if ! blkid "$DATA_DEV" >/dev/null 2>&1; then
+  mkfs.ext4 -q "$DATA_DEV"
+fi
+DATA_UUID=$(blkid -s UUID -o value "$DATA_DEV")
+if [ -z "$DATA_UUID" ]; then
+  echo "ERROR: failed to get UUID for data volume $DATA_DEV" >&2
+  exit 0
+fi
 if ! grep -q "UUID=$DATA_UUID" /etc/fstab; then
   echo "UUID=$DATA_UUID %[2]s ext4 defaults,nofail 0 2" >> /etc/fstab
 fi

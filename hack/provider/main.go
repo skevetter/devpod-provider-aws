@@ -188,6 +188,7 @@ func buildOptionGroups() []OptionGroup {
 				"AWS_DATA_VOLUME_SIZE",
 				"AWS_DATA_VOLUME_DEVICE",
 				"AWS_DATA_VOLUME_MOUNT_PATH",
+				"AWS_DATA_VOLUME_TYPE",
 			},
 		},
 		{
@@ -620,6 +621,10 @@ func buildOptions() Options {
 		"AWS_DATA_VOLUME_MOUNT_PATH": {
 			Description: "Mount path for the secondary data volume inside the instance.",
 			Default:     "/data",
+		},
+		"AWS_DATA_VOLUME_TYPE": {
+			Description: "EBS volume type for the secondary data volume (e.g. gp3, gp2, io1, io2).",
+			Default:     "gp3",
 		},
 	}
 }

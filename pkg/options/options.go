@@ -38,6 +38,7 @@ var (
 	AWS_DATA_VOLUME_SIZE        = "AWS_DATA_VOLUME_SIZE"
 	AWS_DATA_VOLUME_DEVICE      = "AWS_DATA_VOLUME_DEVICE"
 	AWS_DATA_VOLUME_MOUNT_PATH  = "AWS_DATA_VOLUME_MOUNT_PATH"
+	AWS_DATA_VOLUME_TYPE        = "AWS_DATA_VOLUME_TYPE"
 )
 
 type Options struct {
@@ -73,6 +74,7 @@ type Options struct {
 	DataVolumeSizeGB     int
 	DataVolumeDevice     string
 	DataVolumeMountPath  string
+	DataVolumeType       string
 }
 
 var strTrue = "true"
@@ -139,11 +141,18 @@ func FromEnv(init, withFolder bool) (*Options, error) {
 	if retOptions.DataVolumeMountPath == "" {
 		retOptions.DataVolumeMountPath = "/data"
 	}
+	retOptions.DataVolumeType = os.Getenv(AWS_DATA_VOLUME_TYPE)
+	if retOptions.DataVolumeType == "" {
+		retOptions.DataVolumeType = "gp3"
+	}
 	dataVolSize := os.Getenv(AWS_DATA_VOLUME_SIZE)
 	if dataVolSize != "" {
 		retOptions.DataVolumeSizeGB, err = strconv.Atoi(dataVolSize)
 		if err != nil {
 			return nil, fmt.Errorf("invalid %s: %w", AWS_DATA_VOLUME_SIZE, err)
+		}
+		if retOptions.DataVolumeSizeGB < 1 {
+			return nil, fmt.Errorf("invalid %s: must be at least 1", AWS_DATA_VOLUME_SIZE)
 		}
 	}
 
