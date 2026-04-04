@@ -1083,7 +1083,7 @@ func buildRunInstancesInput(
 	if err != nil {
 		return nil, route53Zone{}, err
 	}
-	userData, err := GetInjectKeypairScript(providerAws.Config.MachineFolder, providerAws.Config)
+	userData, err := GetInjectKeypairScript(providerAws.Config)
 	if err != nil {
 		return nil, route53Zone{}, err
 	}
@@ -1453,8 +1453,8 @@ func Delete(ctx context.Context, provider *AwsProvider, machine Machine) error {
 	return nil
 }
 
-func GetInjectKeypairScript(dir string, config *options.Options) (string, error) {
-	publicKeyBase, err := ssh.GetPublicKeyBase(dir)
+func GetInjectKeypairScript(config *options.Options) (string, error) {
+	publicKeyBase, err := ssh.GetPublicKeyBase(config.MachineFolder)
 	if err != nil {
 		return "", err
 	}
