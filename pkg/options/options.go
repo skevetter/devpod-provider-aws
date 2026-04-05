@@ -78,6 +78,11 @@ type Options struct {
 	DataVolumeType       string
 }
 
+// HasDataVolume reports whether a secondary data volume is configured.
+func (o *Options) HasDataVolume() bool {
+	return o.DataVolumeSnapshotID != "" || o.DataVolumeSizeGB > 0
+}
+
 var strTrue = "true"
 
 func FromEnv(init, withFolder bool) (*Options, error) {

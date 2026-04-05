@@ -1194,7 +1194,7 @@ func applyDataVolume(
 	instance *ec2.RunInstancesInput,
 ) error {
 	cfg := providerAws.Config
-	if cfg.DataVolumeSnapshotID == "" && cfg.DataVolumeSizeGB <= 0 {
+	if !cfg.HasDataVolume() {
 		return nil
 	}
 
@@ -1490,7 +1490,7 @@ chown -R devpod:devpod /home/devpod`
 // See: https://docs.aws.amazon.com/ebs/latest/userguide/nvme-ebs-volumes.html
 // See: https://docs.aws.amazon.com/ebs/latest/userguide/identify-nvme-ebs-device.html
 func dataVolumeMountScript(config *options.Options) string {
-	if config.DataVolumeSnapshotID == "" && config.DataVolumeSizeGB <= 0 {
+	if !config.HasDataVolume() {
 		return ""
 	}
 
