@@ -1507,7 +1507,7 @@ if [ ! -b "$DATA_DEV" ]; then
     if command -v ebsnvme-id >/dev/null 2>&1; then
       MAPPED=$(ebsnvme-id -b "$nvmedev" 2>/dev/null)
     elif command -v nvme >/dev/null 2>&1; then
-      MAPPED=$(nvme id-ctrl -v "$nvmedev" 2>/dev/null \
+      MAPPED=$(nvme id-ctrl -V "$nvmedev" 2>/dev/null \
         | sed -n '/^vs\[\]/,$ { s/^.*"\(.*\)".*/\1/p }' \
         | tr -d ' .' | head -1)
     fi
@@ -1544,9 +1544,9 @@ if ! grep -q "UUID=$DATA_UUID" /etc/fstab; then
 fi
 mount -a
 if ! mountpoint -q "%[2]s"; then
-  echo "ERROR: failed to mount data volume at %[2]s" >&2
-  exit 1
+  echo "ERROR: failed to mount data volume at %[2]s" >&2; exit 1
 fi
+case "$DATA_FSTYPE" in ext4) resize2fs "$DATA_DEV" 2>/dev/null;; xfs) xfs_growfs "%[2]s" 2>/dev/null;; esac
 chown devpod:devpod "%[2]s"`, config.DataVolumeDevice, config.DataVolumeMountPath, config.DataVolumeSnapshotID)
 }
 

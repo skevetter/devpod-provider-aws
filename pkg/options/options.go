@@ -140,8 +140,12 @@ func FromEnv(init, withFolder bool) (*Options, error) {
 	// Optional data volume settings
 	retOptions.DataVolumeSnapshotID = os.Getenv(AWS_DATA_VOLUME_SNAPSHOT_ID)
 	if retOptions.DataVolumeSnapshotID != "" {
-		if !regexp.MustCompile(`^snap-[0-9a-f]{8,17}$`).MatchString(retOptions.DataVolumeSnapshotID) {
-			return nil, fmt.Errorf("invalid %s: must be a valid snapshot ID like snap-0123456789abcdef0", AWS_DATA_VOLUME_SNAPSHOT_ID)
+		snapRe := regexp.MustCompile(`^snap-[0-9a-f]{8,17}$`)
+		if !snapRe.MatchString(retOptions.DataVolumeSnapshotID) {
+			return nil, fmt.Errorf(
+				"invalid %s: must be a valid snapshot ID (snap-<hex>)",
+				AWS_DATA_VOLUME_SNAPSHOT_ID,
+			)
 		}
 	}
 	retOptions.DataVolumeDevice = os.Getenv(AWS_DATA_VOLUME_DEVICE)
@@ -162,9 +166,15 @@ func FromEnv(init, withFolder bool) (*Options, error) {
 	if retOptions.DataVolumeType == "" {
 		retOptions.DataVolumeType = "gp3"
 	}
-	validVolumeTypes := map[string]bool{"gp2": true, "gp3": true, "io1": true, "io2": true, "st1": true, "sc1": true, "standard": true}
+	validVolumeTypes := map[string]bool{
+		"gp2": true, "gp3": true,
+		"st1": true, "sc1": true, "standard": true,
+	}
 	if !validVolumeTypes[retOptions.DataVolumeType] {
-		return nil, fmt.Errorf("invalid %s: must be one of gp2, gp3, io1, io2, st1, sc1, standard", AWS_DATA_VOLUME_TYPE)
+		return nil, fmt.Errorf(
+			"invalid %s: must be one of gp2, gp3, st1, sc1, standard",
+			AWS_DATA_VOLUME_TYPE,
+		)
 	}
 	dataVolSize := os.Getenv(AWS_DATA_VOLUME_SIZE)
 	if dataVolSize != "" {

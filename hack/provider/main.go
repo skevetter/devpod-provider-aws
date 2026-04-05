@@ -623,7 +623,7 @@ func buildOptions() Options {
 			Default:     "/data",
 		},
 		"AWS_DATA_VOLUME_TYPE": {
-			Description: "EBS volume type for the secondary data volume (e.g. gp3, gp2, io1, io2).",
+			Description: "EBS volume type for the secondary data volume (e.g. gp3, gp2, st1, sc1).",
 			Default:     "gp3",
 		},
 	}
