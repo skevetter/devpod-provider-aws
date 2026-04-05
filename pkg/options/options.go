@@ -153,14 +153,20 @@ func FromEnv(init, withFolder bool) (*Options, error) {
 		retOptions.DataVolumeDevice = "/dev/xvdf"
 	}
 	if !regexp.MustCompile(`^/dev/[a-zA-Z0-9/]+$`).MatchString(retOptions.DataVolumeDevice) {
-		return nil, fmt.Errorf("invalid %s: must be a valid device path like /dev/xvdf", AWS_DATA_VOLUME_DEVICE)
+		return nil, fmt.Errorf(
+			"invalid %s: must be a valid device path like /dev/xvdf",
+			AWS_DATA_VOLUME_DEVICE,
+		)
 	}
 	retOptions.DataVolumeMountPath = os.Getenv(AWS_DATA_VOLUME_MOUNT_PATH)
 	if retOptions.DataVolumeMountPath == "" {
 		retOptions.DataVolumeMountPath = "/data"
 	}
 	if !regexp.MustCompile(`^/[a-zA-Z0-9/_.-]+$`).MatchString(retOptions.DataVolumeMountPath) {
-		return nil, fmt.Errorf("invalid %s: must be a valid absolute path like /data", AWS_DATA_VOLUME_MOUNT_PATH)
+		return nil, fmt.Errorf(
+			"invalid %s: must be a valid absolute path like /data",
+			AWS_DATA_VOLUME_MOUNT_PATH,
+		)
 	}
 	retOptions.DataVolumeType = os.Getenv(AWS_DATA_VOLUME_TYPE)
 	if retOptions.DataVolumeType == "" {
