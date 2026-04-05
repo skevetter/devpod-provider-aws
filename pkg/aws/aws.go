@@ -1479,15 +1479,27 @@ chmod 0700 /home/devpod/.ssh
 chmod 0600 /home/devpod/.ssh/authorized_keys
 chown -R devpod:devpod /home/devpod`
 
-	if config != nil && (config.DataVolumeSnapshotID != "" || config.DataVolumeSizeGB > 0) {
-		resultScript += fmt.Sprintf(`
+	resultScript += dataVolumeMountScript(config)
+
+	return base64.StdEncoding.EncodeToString([]byte(resultScript)), nil
+}
+
+// dataVolumeMountScript returns a shell snippet that resolves the data volume
+// device (including NVMe translation on Nitro instances), formats it if needed,
+// and adds a persistent fstab entry.
+// See: https://docs.aws.amazon.com/ebs/latest/userguide/nvme-ebs-volumes.html
+// See: https://docs.aws.amazon.com/ebs/latest/userguide/identify-nvme-ebs-device.html
+func dataVolumeMountScript(config *options.Options) string {
+	if config == nil || (config.DataVolumeSnapshotID == "" && config.DataVolumeSizeGB <= 0) {
+		return ""
+	}
+
+	return fmt.Sprintf(`
 
 # Mount secondary data volume with persistent fstab entry.
 # On Nitro-based instances, device names like /dev/xvdf are exposed as NVMe
 # devices (/dev/nvme*n1). Amazon Linux creates symlinks automatically, but
 # other distros do not. We resolve via nvme id-ctrl vendor-specific data.
-# See: https://docs.aws.amazon.com/ebs/latest/userguide/nvme-ebs-volumes.html
-# See: https://docs.aws.amazon.com/ebs/latest/userguide/identify-nvme-ebs-device.html
 DATA_DEV=%[1]s
 if [ ! -b "$DATA_DEV" ]; then
   # On Nitro instances, scan NVMe devices and match by the block device
@@ -1533,9 +1545,6 @@ if ! grep -q "UUID=$DATA_UUID" /etc/fstab; then
 fi
 mount -a
 chown devpod:devpod %[2]s`, config.DataVolumeDevice, config.DataVolumeMountPath)
-	}
-
-	return base64.StdEncoding.EncodeToString([]byte(resultScript)), nil
 }
 
 func logCallerIdentity(ctx context.Context, cfg aws.Config, logs log.Logger) error {
