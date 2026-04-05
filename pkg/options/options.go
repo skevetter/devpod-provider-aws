@@ -9,6 +9,11 @@ import (
 )
 
 var (
+	devicePathRe = regexp.MustCompile(`^/dev/[a-zA-Z0-9/]+$`)
+	mountPathRe  = regexp.MustCompile(`^/[a-zA-Z0-9/_.-]+$`)
+)
+
+var (
 	AWS_AMI                             = "AWS_AMI"
 	AWS_DISK_SIZE                       = "AWS_DISK_SIZE"
 	AWS_ROOT_DEVICE                     = "AWS_ROOT_DEVICE"
@@ -139,20 +144,11 @@ func FromEnv(init, withFolder bool) (*Options, error) {
 
 	// Optional data volume settings
 	retOptions.DataVolumeSnapshotID = os.Getenv(AWS_DATA_VOLUME_SNAPSHOT_ID)
-	if retOptions.DataVolumeSnapshotID != "" {
-		snapRe := regexp.MustCompile(`^snap-[0-9a-f]{8,17}$`)
-		if !snapRe.MatchString(retOptions.DataVolumeSnapshotID) {
-			return nil, fmt.Errorf(
-				"invalid %s: must be a valid snapshot ID (snap-<hex>)",
-				AWS_DATA_VOLUME_SNAPSHOT_ID,
-			)
-		}
-	}
 	retOptions.DataVolumeDevice = os.Getenv(AWS_DATA_VOLUME_DEVICE)
 	if retOptions.DataVolumeDevice == "" {
 		retOptions.DataVolumeDevice = "/dev/xvdf"
 	}
-	if !regexp.MustCompile(`^/dev/[a-zA-Z0-9/]+$`).MatchString(retOptions.DataVolumeDevice) {
+	if !devicePathRe.MatchString(retOptions.DataVolumeDevice) {
 		return nil, fmt.Errorf(
 			"invalid %s: must be a valid device path like /dev/xvdf",
 			AWS_DATA_VOLUME_DEVICE,
@@ -162,7 +158,7 @@ func FromEnv(init, withFolder bool) (*Options, error) {
 	if retOptions.DataVolumeMountPath == "" {
 		retOptions.DataVolumeMountPath = "/data"
 	}
-	if !regexp.MustCompile(`^/[a-zA-Z0-9/_.-]+$`).MatchString(retOptions.DataVolumeMountPath) {
+	if !mountPathRe.MatchString(retOptions.DataVolumeMountPath) {
 		return nil, fmt.Errorf(
 			"invalid %s: must be a valid absolute path like /data",
 			AWS_DATA_VOLUME_MOUNT_PATH,
@@ -171,16 +167,6 @@ func FromEnv(init, withFolder bool) (*Options, error) {
 	retOptions.DataVolumeType = os.Getenv(AWS_DATA_VOLUME_TYPE)
 	if retOptions.DataVolumeType == "" {
 		retOptions.DataVolumeType = "gp3"
-	}
-	validVolumeTypes := map[string]bool{
-		"gp2": true, "gp3": true,
-		"st1": true, "sc1": true, "standard": true,
-	}
-	if !validVolumeTypes[retOptions.DataVolumeType] {
-		return nil, fmt.Errorf(
-			"invalid %s: must be one of gp2, gp3, st1, sc1, standard",
-			AWS_DATA_VOLUME_TYPE,
-		)
 	}
 	dataVolSize := os.Getenv(AWS_DATA_VOLUME_SIZE)
 	if dataVolSize != "" {
