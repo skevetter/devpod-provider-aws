@@ -161,6 +161,8 @@ func buildConfigOptions(
 				SessionToken:    options.SessionToken,
 			},
 		}))
+		opts = append(opts, awsConfig.WithSharedConfigFiles([]string{}))
+		opts = append(opts, awsConfig.WithSharedCredentialsFiles([]string{}))
 	case options.CustomCredentialCommand != "":
 		creds, err := executeCredentialCommand(ctx, options.CustomCredentialCommand, log)
 		if err != nil {
@@ -170,6 +172,8 @@ func buildConfigOptions(
 			opts,
 			awsConfig.WithCredentialsProvider(credentials.StaticCredentialsProvider{Value: creds}),
 		)
+		opts = append(opts, awsConfig.WithSharedConfigFiles([]string{}))
+		opts = append(opts, awsConfig.WithSharedCredentialsFiles([]string{}))
 	default:
 		profile := os.Getenv("AWS_PROFILE")
 		if profile != "" {
