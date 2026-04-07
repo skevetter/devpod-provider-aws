@@ -1471,9 +1471,9 @@ func GetInjectKeypairScript(config *options.Options) (string, error) {
 	resultScript := `#!/bin/sh
 useradd devpod -d /home/devpod
 mkdir -p /home/devpod
-if grep -q sudo /etc/groups; then
+if grep -q sudo /etc/group; then
 	usermod -aG sudo devpod
-elif grep -q wheel /etc/groups; then
+elif grep -q wheel /etc/group; then
 	usermod -aG wheel devpod
 fi
 echo "devpod ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/91-devpod
