@@ -1551,7 +1551,12 @@ if ! mountpoint -q "%[2]s"; then
   echo "ERROR: failed to mount data volume at %[2]s" >&2; exit 1
 fi
 case "$DATA_FSTYPE" in ext4) resize2fs "$DATA_DEV" 2>/dev/null;; xfs) xfs_growfs "%[2]s" 2>/dev/null;; esac
-chown devpod:devpod "%[2]s"`, config.DataVolumeDevice, config.DataVolumeMountPath, config.DataVolumeSnapshotID)
+chown devpod:devpod "%[2]s"
+# Docker 29+ uses containerd-snapshotter; image layers live under /var/lib/containerd.
+# Symlink it onto the data volume so EBS snapshots capture everything.
+mkdir -p "%[2]s/.containerd-root"
+[ -e /var/lib/containerd ] && [ ! -L /var/lib/containerd ] && rm -rf /var/lib/containerd
+ln -sfn "%[2]s/.containerd-root" /var/lib/containerd`, config.DataVolumeDevice, config.DataVolumeMountPath, config.DataVolumeSnapshotID)
 }
 
 func logCallerIdentity(ctx context.Context, cfg aws.Config, logs log.Logger) error {
