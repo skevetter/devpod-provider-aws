@@ -1592,7 +1592,7 @@ func dataVolumeMountScript(config *options.Options) string {
 DATA_DEV="%[1]s"
 SNAPSHOT_ID="%[3]s"
 VOLUME_ID="%[4]s"
-`+dataVolumeWaitSnippet()+dataVolumeResolveSnippet()+dataVolumeFormatMountSnippet(),
+`+dataVolumeResolveSnippet()+dataVolumeFormatMountSnippet(),
 		config.DataVolumeDevice,    // %[1]s
 		config.DataVolumeMountPath, // %[2]s
 		config.DataVolumeSnapshotID, // %[3]s
@@ -1600,42 +1600,33 @@ VOLUME_ID="%[4]s"
 	)
 }
 
-// dataVolumeWaitSnippet returns a shell snippet that waits for the data volume
-// block device to appear. The volume is attached post-launch so it may not be
-// available immediately when user-data runs.
-func dataVolumeWaitSnippet() string {
-	return `
-# Wait for the block device to appear (volume is attached post-launch).
-TRIES=0
-while [ ! -b "$DATA_DEV" ] && [ "$TRIES" -lt 30 ]; do
-  sleep 2; TRIES=$((TRIES + 1))
-done
-`
-}
-
-// dataVolumeResolveSnippet returns the NVMe device resolution logic:
-// 1. ebsnvme-id (Amazon Linux, pre-installed)
-// 2. sysfs serial number scan (zero-dependency fallback)
+// dataVolumeResolveSnippet returns a shell snippet that waits for the data
+// volume to appear and resolves NVMe device names in a single retry loop.
+// On each 2-second iteration it checks: direct block device, ebsnvme-id
+// mapping, then sysfs serial scan. Breaks as soon as DATA_DEV is resolved.
 func dataVolumeResolveSnippet() string {
 	return `
-if [ ! -b "$DATA_DEV" ]; then
-  EXPECTED_SHORT=$(echo "$DATA_DEV" | sed 's|^/dev/||')
-  for nvmedev in /dev/nvme[0-9]*n1; do
-    [ -b "$nvmedev" ] || continue
-    if command -v ebsnvme-id >/dev/null 2>&1; then
+EXPECTED_SHORT=$(echo "$DATA_DEV" | sed 's|^/dev/||')
+VOL_SERIAL=$(echo "$VOLUME_ID" | tr -d '-')
+TRIES=0
+while [ "$TRIES" -lt 30 ]; do
+  if [ -b "$DATA_DEV" ]; then break; fi
+  if command -v ebsnvme-id >/dev/null 2>&1; then
+    for nvmedev in /dev/nvme[0-9]*n1; do
+      [ -b "$nvmedev" ] || continue
       MAPPED=$(ebsnvme-id -b "$nvmedev" 2>/dev/null | sed 's|^/dev/||')
-      if [ "$MAPPED" = "$EXPECTED_SHORT" ]; then DATA_DEV="$nvmedev"; break; fi
-    fi
-  done
-fi
-if [ ! -b "$DATA_DEV" ] && [ -n "$VOLUME_ID" ]; then
-  VOL_SERIAL=$(echo "$VOLUME_ID" | tr -d '-')
-  for nvmedev in /dev/nvme[0-9]*n1; do
-    [ -b "$nvmedev" ] || continue
-    SERIAL=$(cat "/sys/block/$(basename "$nvmedev")/device/serial" 2>/dev/null | tr -d ' ')
-    if [ "$SERIAL" = "$VOL_SERIAL" ]; then DATA_DEV="$nvmedev"; break; fi
-  done
-fi
+      if [ "$MAPPED" = "$EXPECTED_SHORT" ]; then DATA_DEV="$nvmedev"; break 2; fi
+    done
+  fi
+  if [ -n "$VOL_SERIAL" ]; then
+    for nvmedev in /dev/nvme[0-9]*n1; do
+      [ -b "$nvmedev" ] || continue
+      SERIAL=$(cat "/sys/block/$(basename "$nvmedev")/device/serial" 2>/dev/null | tr -d ' ')
+      if [ "$SERIAL" = "$VOL_SERIAL" ]; then DATA_DEV="$nvmedev"; break 2; fi
+    done
+  fi
+  sleep 2; TRIES=$((TRIES + 1))
+done
 if [ ! -b "$DATA_DEV" ]; then
   echo "ERROR: data volume device %[1]s (volume $VOLUME_ID) not found" >&2; exit 1
 fi
