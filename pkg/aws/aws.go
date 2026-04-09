@@ -1293,6 +1293,14 @@ func attachDataVolume(
 	if err != nil {
 		return fmt.Errorf("attach data volume %s to %s: %w", volumeID, instanceID, err)
 	}
+
+	// Wait for attachment to complete before modifying block device mapping.
+	waiter := ec2.NewVolumeInUseWaiter(svc)
+	if err := waiter.Wait(ctx, &ec2.DescribeVolumesInput{
+		VolumeIds: []string{volumeID},
+	}, 5*time.Minute); err != nil {
+		return fmt.Errorf("wait for volume %s attachment: %w", volumeID, err)
+	}
 	providerAws.Log.Debugf(
 		"attached data volume %s to %s at %s",
 		volumeID, instanceID, cfg.DataVolumeDevice,
