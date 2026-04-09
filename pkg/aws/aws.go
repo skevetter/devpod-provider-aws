@@ -1102,6 +1102,9 @@ func Create(
 		)
 		if err != nil {
 			terminateOnCleanup(providerAws, instanceID)
+			if dataVolumeID != "" {
+				deleteVolume(ctx, cfg, dataVolumeID)
+			}
 			return Machine{}, fmt.Errorf("create Route53 record: %w", err)
 		}
 		machine.PublicIP = resolvedIP
