@@ -1509,7 +1509,9 @@ if [ ! -b "$DATA_DEV" ]; then
   # Ensure we have a tool to read NVMe device mappings
   if ! command -v ebsnvme-id >/dev/null 2>&1 && ! command -v nvme >/dev/null 2>&1; then
     if command -v apt-get >/dev/null 2>&1; then
-      if ! apt-get update -qq >/dev/null 2>&1 || ! DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nvme-cli >/dev/null 2>&1; then
+      export DEBIAN_FRONTEND=noninteractive
+      if ! apt-get update -qq >/dev/null 2>&1 || \
+         ! apt-get install -y -qq nvme-cli >/dev/null 2>&1; then
         echo "ERROR: failed to install nvme-cli via apt-get" >&2; exit 1
       fi
     elif command -v yum >/dev/null 2>&1; then
