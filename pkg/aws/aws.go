@@ -1064,7 +1064,7 @@ func Create(
 	instance, r53Zone, err := buildRunInstancesInput(ctx, providerAws, subnet)
 	if err != nil {
 		if dataVolumeID != "" {
-			deleteVolume(ctx, cfg, dataVolumeID)
+			deleteVolume(cfg, dataVolumeID)
 		}
 		return Machine{}, err
 	}
@@ -1075,7 +1075,7 @@ func Create(
 	result, err := svc.RunInstances(ctx, instance)
 	if err != nil {
 		if dataVolumeID != "" {
-			deleteVolume(ctx, cfg, dataVolumeID)
+			deleteVolume(cfg, dataVolumeID)
 		}
 		return Machine{}, err
 	}
@@ -1084,9 +1084,9 @@ func Create(
 	instanceID := aws.ToString(result.Instances[0].InstanceId)
 
 	if dataVolumeID != "" {
-		if err := attachDataVolume(ctx, cfg, providerAws, instanceID, dataVolumeID); err != nil {
+		if err := attachDataVolume(ctx, providerAws, instanceID, dataVolumeID); err != nil {
 			terminateOnCleanup(providerAws, instanceID)
-			deleteVolume(ctx, cfg, dataVolumeID)
+			deleteVolume(cfg, dataVolumeID)
 			return Machine{}, err
 		}
 	}
@@ -1103,7 +1103,7 @@ func Create(
 		if err != nil {
 			terminateOnCleanup(providerAws, instanceID)
 			if dataVolumeID != "" {
-				deleteVolume(ctx, cfg, dataVolumeID)
+				deleteVolume(cfg, dataVolumeID)
 			}
 			return Machine{}, fmt.Errorf("create Route53 record: %w", err)
 		}
@@ -1267,7 +1267,9 @@ func createDataVolume(
 		VolumeIds: []string{volumeID},
 	}, 2*time.Minute); err != nil {
 		// Best-effort cleanup of the orphaned volume.
-		_, _ = svc.DeleteVolume(ctx, &ec2.DeleteVolumeInput{VolumeId: aws.String(volumeID)})
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+		defer cancel()
+		_, _ = svc.DeleteVolume(cleanupCtx, &ec2.DeleteVolumeInput{VolumeId: aws.String(volumeID)})
 		return "", fmt.Errorf("wait for data volume %s: %w", volumeID, err)
 	}
 	return volumeID, nil
@@ -1277,12 +1279,11 @@ func createDataVolume(
 // for deletion on termination.
 func attachDataVolume(
 	ctx context.Context,
-	awsCfg aws.Config,
 	providerAws *AwsProvider,
 	instanceID, volumeID string,
 ) error {
 	cfg := providerAws.Config
-	svc := ec2.NewFromConfig(awsCfg)
+	svc := ec2.NewFromConfig(providerAws.AwsConfig)
 
 	_, err := svc.AttachVolume(ctx, &ec2.AttachVolumeInput{
 		Device:     aws.String(cfg.DataVolumeDevice),
@@ -1292,8 +1293,10 @@ func attachDataVolume(
 	if err != nil {
 		return fmt.Errorf("attach data volume %s to %s: %w", volumeID, instanceID, err)
 	}
-	providerAws.Log.Debugf("attached data volume %s to %s at %s",
-		volumeID, instanceID, cfg.DataVolumeDevice)
+	providerAws.Log.Debugf(
+		"attached data volume %s to %s at %s",
+		volumeID, instanceID, cfg.DataVolumeDevice,
+	)
 
 	// Mark the volume for automatic deletion when the instance terminates.
 	_, err = svc.ModifyInstanceAttribute(ctx, &ec2.ModifyInstanceAttributeInput{
@@ -1306,15 +1309,18 @@ func attachDataVolume(
 		}},
 	})
 	if err != nil {
-		providerAws.Log.Debugf("warning: failed to set DeleteOnTermination for %s: %v", volumeID, err)
+		return fmt.Errorf("set DeleteOnTermination for volume %s: %w", volumeID, err)
 	}
 	return nil
 }
 
-// deleteVolume is a best-effort cleanup helper.
-func deleteVolume(ctx context.Context, awsCfg aws.Config, volumeID string) {
+// deleteVolume is a best-effort cleanup helper. It uses a fresh context so
+// cleanup succeeds even when the caller's context is cancelled.
+func deleteVolume(awsCfg aws.Config, volumeID string) {
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	defer cancel()
 	svc := ec2.NewFromConfig(awsCfg)
-	_, _ = svc.DeleteVolume(ctx, &ec2.DeleteVolumeInput{VolumeId: aws.String(volumeID)})
+	_, _ = svc.DeleteVolume(cleanupCtx, &ec2.DeleteVolumeInput{VolumeId: aws.String(volumeID)})
 }
 
 func applyInstanceProfile(
@@ -1593,10 +1599,10 @@ DATA_DEV="%[1]s"
 SNAPSHOT_ID="%[3]s"
 VOLUME_ID="%[4]s"
 `+dataVolumeResolveSnippet()+dataVolumeFormatMountSnippet(),
-		config.DataVolumeDevice,    // %[1]s
-		config.DataVolumeMountPath, // %[2]s
+		config.DataVolumeDevice,     // %[1]s
+		config.DataVolumeMountPath,  // %[2]s
 		config.DataVolumeSnapshotID, // %[3]s
-		config.DataVolumeID,        // %[4]s
+		config.DataVolumeID,         // %[4]s
 	)
 }
 
