@@ -81,6 +81,7 @@ type Options struct {
 	DataVolumeDevice     string
 	DataVolumeMountPath  string
 	DataVolumeType       string
+	DataVolumeID         string // populated at runtime after CreateVolume
 }
 
 // HasDataVolume reports whether a secondary data volume is configured.

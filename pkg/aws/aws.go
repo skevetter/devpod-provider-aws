@@ -263,8 +263,9 @@ func NewProvider(ctx context.Context, withFolder bool, log log.Logger) (*AwsProv
 
 // subnetResult holds the resolved subnet ID and its VPC ID.
 type subnetResult struct {
-	subnetID string
-	vpcID    string
+	subnetID         string
+	vpcID            string
+	availabilityZone string
 }
 
 func GetSubnet(ctx context.Context, provider *AwsProvider) (subnetResult, error) {
@@ -360,6 +361,9 @@ func subnetResultFrom(s *types.Subnet) subnetResult {
 	r := subnetResult{subnetID: *s.SubnetId}
 	if s.VpcId != nil {
 		r.vpcID = *s.VpcId
+	}
+	if s.AvailabilityZone != nil {
+		r.availabilityZone = *s.AvailabilityZone
 	}
 	return r
 }
@@ -1041,8 +1045,27 @@ func Create(
 		providerAws.Config.DiskSizeGB,
 	)
 
-	instance, r53Zone, err := buildRunInstancesInput(ctx, providerAws)
+	subnet, err := GetSubnet(ctx, providerAws)
 	if err != nil {
+		return Machine{}, fmt.Errorf("determine subnet ID: %w", err)
+	}
+
+	// Pre-create the data volume so the volume ID can be embedded in the
+	// user-data script for sysfs-based NVMe device resolution.
+	var dataVolumeID string
+	if providerAws.Config.HasDataVolume() {
+		dataVolumeID, err = createDataVolume(ctx, cfg, providerAws, subnet.availabilityZone)
+		if err != nil {
+			return Machine{}, err
+		}
+		providerAws.Config.DataVolumeID = dataVolumeID
+	}
+
+	instance, r53Zone, err := buildRunInstancesInput(ctx, providerAws, subnet)
+	if err != nil {
+		if dataVolumeID != "" {
+			deleteVolume(ctx, cfg, dataVolumeID)
+		}
 		return Machine{}, err
 	}
 
@@ -1051,9 +1074,22 @@ func Create(
 	providerAws.Log.Debugf("launching EC2 instance")
 	result, err := svc.RunInstances(ctx, instance)
 	if err != nil {
+		if dataVolumeID != "" {
+			deleteVolume(ctx, cfg, dataVolumeID)
+		}
 		return Machine{}, err
 	}
 	providerAws.Log.Debugf("EC2 instance launched: %s", *result.Instances[0].InstanceId)
+
+	instanceID := aws.ToString(result.Instances[0].InstanceId)
+
+	if dataVolumeID != "" {
+		if err := attachDataVolume(ctx, cfg, providerAws, instanceID, dataVolumeID); err != nil {
+			terminateOnCleanup(providerAws, instanceID)
+			deleteVolume(ctx, cfg, dataVolumeID)
+			return Machine{}, err
+		}
+	}
 
 	machine := NewMachineFromInstance(result.Instances[0])
 
@@ -1065,7 +1101,7 @@ func Create(
 			result.Instances[0],
 		)
 		if err != nil {
-			terminateOnCleanup(providerAws, *result.Instances[0].InstanceId)
+			terminateOnCleanup(providerAws, instanceID)
 			return Machine{}, fmt.Errorf("create Route53 record: %w", err)
 		}
 		machine.PublicIP = resolvedIP
@@ -1078,11 +1114,8 @@ func Create(
 func buildRunInstancesInput(
 	ctx context.Context,
 	providerAws *AwsProvider,
+	subnet subnetResult,
 ) (*ec2.RunInstancesInput, route53Zone, error) {
-	subnet, err := GetSubnet(ctx, providerAws)
-	if err != nil {
-		return nil, route53Zone{}, fmt.Errorf("determine subnet ID: %w", err)
-	}
 	devpodSG, err := resolveSecurityGroups(ctx, providerAws, subnet.vpcID)
 	if err != nil {
 		return nil, route53Zone{}, err
@@ -1126,9 +1159,6 @@ func buildRunInstancesInput(
 
 	applyNestedVirtualization(providerAws, instance)
 	applySpotInstance(providerAws, instance)
-	if err := applyDataVolume(providerAws, instance); err != nil {
-		return nil, route53Zone{}, err
-	}
 
 	if err := applyInstanceProfile(ctx, providerAws, instance); err != nil {
 		return nil, route53Zone{}, err
@@ -1190,45 +1220,98 @@ func applySpotInstance(providerAws *AwsProvider, instance *ec2.RunInstancesInput
 	}
 }
 
-// applyDataVolume adds an optional secondary EBS volume to the instance.
-// When a snapshot ID is provided, the volume is restored from that snapshot,
-// enabling fast workspace recovery without re-running lengthy setup steps.
-func applyDataVolume(
+// createDataVolume creates a standalone EBS volume so the volume ID is known
+// before the instance launches. The caller must attach the volume after
+// RunInstances and clean it up on failure.
+func createDataVolume(
+	ctx context.Context,
+	awsCfg aws.Config,
 	providerAws *AwsProvider,
-	instance *ec2.RunInstancesInput,
-) error {
+	az string,
+) (string, error) {
 	cfg := providerAws.Config
-	if !cfg.HasDataVolume() {
-		return nil
+	input := &ec2.CreateVolumeInput{
+		AvailabilityZone: aws.String(az),
+		VolumeType:       types.VolumeType(cfg.DataVolumeType),
+		TagSpecifications: []types.TagSpecification{{
+			ResourceType: types.ResourceTypeVolume,
+			Tags: []types.Tag{
+				{Key: aws.String("Name"), Value: aws.String("devpod-data-" + cfg.MachineID)},
+			},
+		}},
 	}
-
-	mapping := types.BlockDeviceMapping{
-		DeviceName: aws.String(cfg.DataVolumeDevice),
-		Ebs: &types.EbsBlockDevice{
-			DeleteOnTermination: aws.Bool(true),
-			VolumeType:          types.VolumeType(cfg.DataVolumeType),
-		},
-	}
-
 	if cfg.DataVolumeSnapshotID != "" {
-		providerAws.Log.Debugf("attaching data volume from snapshot %s",
-			cfg.DataVolumeSnapshotID)
-		mapping.Ebs.SnapshotId = aws.String(cfg.DataVolumeSnapshotID)
+		input.SnapshotId = aws.String(cfg.DataVolumeSnapshotID)
 	}
-
 	if cfg.DataVolumeSizeGB > 0 {
 		size, err := validatedDiskSize(cfg.DataVolumeSizeGB)
 		if err != nil {
-			return fmt.Errorf("invalid data volume size: %w", err)
+			return "", fmt.Errorf("invalid data volume size: %w", err)
 		}
-		mapping.Ebs.VolumeSize = &size
+		input.Size = &size
 	}
 
-	instance.BlockDeviceMappings = append(instance.BlockDeviceMappings, mapping)
-	providerAws.Log.Debugf("data volume configured: device=%s mount=%s",
-		cfg.DataVolumeDevice, cfg.DataVolumeMountPath)
+	svc := ec2.NewFromConfig(awsCfg)
+	vol, err := svc.CreateVolume(ctx, input)
+	if err != nil {
+		return "", fmt.Errorf("create data volume: %w", err)
+	}
+	volumeID := aws.ToString(vol.VolumeId)
+	providerAws.Log.Debugf("created data volume %s in %s", volumeID, az)
 
+	waiter := ec2.NewVolumeAvailableWaiter(svc)
+	if err := waiter.Wait(ctx, &ec2.DescribeVolumesInput{
+		VolumeIds: []string{volumeID},
+	}, 2*time.Minute); err != nil {
+		// Best-effort cleanup of the orphaned volume.
+		_, _ = svc.DeleteVolume(ctx, &ec2.DeleteVolumeInput{VolumeId: aws.String(volumeID)})
+		return "", fmt.Errorf("wait for data volume %s: %w", volumeID, err)
+	}
+	return volumeID, nil
+}
+
+// attachDataVolume attaches a pre-created volume to an instance and marks it
+// for deletion on termination.
+func attachDataVolume(
+	ctx context.Context,
+	awsCfg aws.Config,
+	providerAws *AwsProvider,
+	instanceID, volumeID string,
+) error {
+	cfg := providerAws.Config
+	svc := ec2.NewFromConfig(awsCfg)
+
+	_, err := svc.AttachVolume(ctx, &ec2.AttachVolumeInput{
+		Device:     aws.String(cfg.DataVolumeDevice),
+		InstanceId: aws.String(instanceID),
+		VolumeId:   aws.String(volumeID),
+	})
+	if err != nil {
+		return fmt.Errorf("attach data volume %s to %s: %w", volumeID, instanceID, err)
+	}
+	providerAws.Log.Debugf("attached data volume %s to %s at %s",
+		volumeID, instanceID, cfg.DataVolumeDevice)
+
+	// Mark the volume for automatic deletion when the instance terminates.
+	_, err = svc.ModifyInstanceAttribute(ctx, &ec2.ModifyInstanceAttributeInput{
+		InstanceId: aws.String(instanceID),
+		BlockDeviceMappings: []types.InstanceBlockDeviceMappingSpecification{{
+			DeviceName: aws.String(cfg.DataVolumeDevice),
+			Ebs: &types.EbsInstanceBlockDeviceSpecification{
+				DeleteOnTermination: aws.Bool(true),
+			},
+		}},
+	})
+	if err != nil {
+		providerAws.Log.Debugf("warning: failed to set DeleteOnTermination for %s: %v", volumeID, err)
+	}
 	return nil
+}
+
+// deleteVolume is a best-effort cleanup helper.
+func deleteVolume(ctx context.Context, awsCfg aws.Config, volumeID string) {
+	svc := ec2.NewFromConfig(awsCfg)
+	_, _ = svc.DeleteVolume(ctx, &ec2.DeleteVolumeInput{VolumeId: aws.String(volumeID)})
 }
 
 func applyInstanceProfile(
@@ -1490,9 +1573,10 @@ chown -R devpod:devpod /home/devpod`
 
 // dataVolumeMountScript returns a shell snippet that resolves the data volume
 // device (including NVMe translation on Nitro instances), formats it if needed,
-// and adds a persistent fstab entry.
+// and adds a persistent fstab entry. NVMe resolution uses ebsnvme-id when
+// available (Amazon Linux) and falls back to matching the volume serial number
+// exposed in sysfs — no nvme-cli required.
 // See: https://docs.aws.amazon.com/ebs/latest/userguide/nvme-ebs-volumes.html
-// See: https://docs.aws.amazon.com/ebs/latest/userguide/identify-nvme-ebs-device.html
 func dataVolumeMountScript(config *options.Options) string {
 	if !config.HasDataVolume() {
 		return ""
@@ -1504,62 +1588,73 @@ func dataVolumeMountScript(config *options.Options) string {
 # See: https://docs.aws.amazon.com/ebs/latest/userguide/nvme-ebs-volumes.html
 DATA_DEV="%[1]s"
 SNAPSHOT_ID="%[3]s"
+VOLUME_ID="%[4]s"
+`+dataVolumeWaitSnippet()+dataVolumeResolveSnippet()+dataVolumeFormatMountSnippet(),
+		config.DataVolumeDevice,    // %[1]s
+		config.DataVolumeMountPath, // %[2]s
+		config.DataVolumeSnapshotID, // %[3]s
+		config.DataVolumeID,        // %[4]s
+	)
+}
+
+// dataVolumeWaitSnippet returns a shell snippet that waits for the data volume
+// block device to appear. The volume is attached post-launch so it may not be
+// available immediately when user-data runs.
+func dataVolumeWaitSnippet() string {
+	return `
+# Wait for the block device to appear (volume is attached post-launch).
+TRIES=0
+while [ ! -b "$DATA_DEV" ] && [ "$TRIES" -lt 30 ]; do
+  sleep 2; TRIES=$((TRIES + 1))
+done
+`
+}
+
+// dataVolumeResolveSnippet returns the NVMe device resolution logic:
+// 1. ebsnvme-id (Amazon Linux, pre-installed)
+// 2. sysfs serial number scan (zero-dependency fallback)
+func dataVolumeResolveSnippet() string {
+	return `
 if [ ! -b "$DATA_DEV" ]; then
-  EXPECTED_SHORT=$(echo "%[1]s" | sed 's|^/dev/||')
-  # Ensure we have a tool to read NVMe device mappings
-  if ! command -v ebsnvme-id >/dev/null 2>&1 && ! command -v nvme >/dev/null 2>&1; then
-    if command -v apt-get >/dev/null 2>&1; then
-      export DEBIAN_FRONTEND=noninteractive
-      if ! apt-get update -qq >/dev/null 2>&1 || \
-         ! apt-get install -y -qq nvme-cli >/dev/null 2>&1; then
-        echo "ERROR: failed to install nvme-cli via apt-get" >&2; exit 1
-      fi
-    elif command -v yum >/dev/null 2>&1; then
-      if ! yum install -y -q nvme-cli >/dev/null 2>&1; then
-        echo "ERROR: failed to install nvme-cli via yum" >&2; exit 1
-      fi
-    fi
-    if ! command -v ebsnvme-id >/dev/null 2>&1 && ! command -v nvme >/dev/null 2>&1; then
-      echo "ERROR: neither ebsnvme-id nor nvme available for NVMe device mapping" >&2; exit 1
-    fi
-  fi
+  EXPECTED_SHORT=$(echo "$DATA_DEV" | sed 's|^/dev/||')
   for nvmedev in /dev/nvme[0-9]*n1; do
     [ -b "$nvmedev" ] || continue
-    MAPPED=""
     if command -v ebsnvme-id >/dev/null 2>&1; then
-      MAPPED=$(ebsnvme-id -b "$nvmedev" 2>/dev/null)
-    elif command -v nvme >/dev/null 2>&1; then
-      MAPPED=$(nvme id-ctrl -V "$nvmedev" 2>/dev/null \
-        | sed -n '/^vs\[\]/,$ { s/^.*"\(.*\)".*/\1/p }' \
-        | tr -d ' .' | head -1)
-    fi
-    MAPPED_SHORT=$(echo "$MAPPED" | sed 's|^/dev/||')
-    if [ "$MAPPED_SHORT" = "$EXPECTED_SHORT" ]; then
-      DATA_DEV="$nvmedev"
-      break
+      MAPPED=$(ebsnvme-id -b "$nvmedev" 2>/dev/null | sed 's|^/dev/||')
+      if [ "$MAPPED" = "$EXPECTED_SHORT" ]; then DATA_DEV="$nvmedev"; break; fi
     fi
   done
 fi
-if [ ! -b "$DATA_DEV" ]; then
-  echo "ERROR: data volume device %[1]s not found" >&2; exit 1
+if [ ! -b "$DATA_DEV" ] && [ -n "$VOLUME_ID" ]; then
+  VOL_SERIAL=$(echo "$VOLUME_ID" | tr -d '-')
+  for nvmedev in /dev/nvme[0-9]*n1; do
+    [ -b "$nvmedev" ] || continue
+    SERIAL=$(cat "/sys/block/$(basename "$nvmedev")/device/serial" 2>/dev/null | tr -d ' ')
+    if [ "$SERIAL" = "$VOL_SERIAL" ]; then DATA_DEV="$nvmedev"; break; fi
+  done
 fi
-mkdir -p "%[2]s"
+if [ ! -b "$DATA_DEV" ]; then
+  echo "ERROR: data volume device %[1]s (volume $VOLUME_ID) not found" >&2; exit 1
+fi
+`
+}
+
+// dataVolumeFormatMountSnippet returns the format, fstab, and mount logic.
+func dataVolumeFormatMountSnippet() string {
+	return `mkdir -p "%[2]s"
 if ! blkid "$DATA_DEV" >/dev/null 2>&1; then
   if [ -n "$SNAPSHOT_ID" ]; then
-    echo "ERROR: snapshot volume $DATA_DEV has no recognizable filesystem" >&2
-    exit 1
+    echo "ERROR: snapshot volume $DATA_DEV has no recognizable filesystem" >&2; exit 1
   fi
   mkfs.ext4 -q "$DATA_DEV"
 fi
 DATA_FSTYPE=$(blkid -s TYPE -o value "$DATA_DEV")
 if [ -z "$DATA_FSTYPE" ]; then
-  echo "ERROR: failed to detect filesystem type for $DATA_DEV" >&2
-  exit 1
+  echo "ERROR: failed to detect filesystem type for $DATA_DEV" >&2; exit 1
 fi
 DATA_UUID=$(blkid -s UUID -o value "$DATA_DEV")
 if [ -z "$DATA_UUID" ]; then
-  echo "ERROR: failed to get UUID for data volume $DATA_DEV" >&2
-  exit 1
+  echo "ERROR: failed to get UUID for data volume $DATA_DEV" >&2; exit 1
 fi
 if ! grep -q "UUID=$DATA_UUID" /etc/fstab; then
   echo "UUID=$DATA_UUID %[2]s $DATA_FSTYPE defaults,nofail 0 2" >> /etc/fstab
@@ -1569,7 +1664,7 @@ if ! mountpoint -q "%[2]s"; then
   echo "ERROR: failed to mount data volume at %[2]s" >&2; exit 1
 fi
 case "$DATA_FSTYPE" in ext4) resize2fs "$DATA_DEV" 2>/dev/null;; xfs) xfs_growfs "%[2]s" 2>/dev/null;; esac
-chown devpod:devpod "%[2]s"`, config.DataVolumeDevice, config.DataVolumeMountPath, config.DataVolumeSnapshotID)
+chown devpod:devpod "%[2]s"`
 }
 
 func logCallerIdentity(ctx context.Context, cfg aws.Config, logs log.Logger) error {
