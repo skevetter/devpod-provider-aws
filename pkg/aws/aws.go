@@ -1501,10 +1501,19 @@ func dataVolumeMountScript(config *options.Options) string {
 	return fmt.Sprintf(`
 
 # Mount secondary data volume. On Nitro instances, resolve NVMe device names.
+# See: https://docs.aws.amazon.com/ebs/latest/userguide/nvme-ebs-volumes.html
 DATA_DEV="%[1]s"
 SNAPSHOT_ID="%[3]s"
 if [ ! -b "$DATA_DEV" ]; then
   EXPECTED_SHORT=$(echo "%[1]s" | sed 's|^/dev/||')
+  # Ensure we have a tool to read NVMe device mappings
+  if ! command -v ebsnvme-id >/dev/null 2>&1 && ! command -v nvme >/dev/null 2>&1; then
+    if command -v apt-get >/dev/null 2>&1; then
+      apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq nvme-cli >/dev/null 2>&1
+    elif command -v yum >/dev/null 2>&1; then
+      yum install -y -q nvme-cli >/dev/null 2>&1
+    fi
+  fi
   for nvmedev in /dev/nvme[0-9]*n1; do
     [ -b "$nvmedev" ] || continue
     MAPPED=""
