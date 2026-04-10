@@ -1323,12 +1323,22 @@ func attachDataVolume(
 }
 
 // deleteVolume is a best-effort cleanup helper. It uses a fresh context so
-// cleanup succeeds even when the caller's context is cancelled.
+// cleanup succeeds even when the caller's context is cancelled. If the volume
+// is still in-use (e.g. instance is terminating), it waits for it to become
+// available before deleting.
 func deleteVolume(awsCfg aws.Config, volumeID string) {
-	cleanupCtx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	svc := ec2.NewFromConfig(awsCfg)
-	_, _ = svc.DeleteVolume(cleanupCtx, &ec2.DeleteVolumeInput{VolumeId: aws.String(volumeID)})
+
+	waiter := ec2.NewVolumeAvailableWaiter(svc)
+	_ = waiter.Wait(cleanupCtx, &ec2.DescribeVolumesInput{
+		VolumeIds: []string{volumeID},
+	}, 5*time.Minute)
+
+	_, _ = svc.DeleteVolume(cleanupCtx, &ec2.DeleteVolumeInput{
+		VolumeId: aws.String(volumeID),
+	})
 }
 
 func applyInstanceProfile(
