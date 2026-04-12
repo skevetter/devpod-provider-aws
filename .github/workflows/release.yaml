@@ -33,7 +33,7 @@ jobs:
         run: go run ./hack/provider/main.go ${{ fromJSON(steps.goreleaser.outputs.metadata).tag }} > ./dist/provider.yaml
 
       - name: upload provider.yaml
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ fromJSON(steps.goreleaser.outputs.metadata).tag }}
           files: ./dist/provider.yaml
