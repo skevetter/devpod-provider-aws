@@ -257,8 +257,8 @@ github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7
 github.com/russross/blackfriday/v2 v2.1.0/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
 github.com/sirupsen/logrus v1.9.4 h1:TsZE7l11zFCLZnZ+teH4Umoq5BhEIfIzfRDZ1Uzql2w=
 github.com/sirupsen/logrus v1.9.4/go.mod h1:ftWc9WdOfJ0a92nsE2jF5u5ZwH8Bv2zdeOC42RjbV2g=
-github.com/skevetter/devpod v0.20.0 h1:Rk/coKsDALygUt1BcxRNGQJwl3qYsIcZFVjtDJXAUoo=
-github.com/skevetter/devpod v0.20.0/go.mod h1:/ldX8m5pd6v68f86bO49/wEK6LJJXNFdPTPeoOa8v9A=
+github.com/skevetter/devpod v0.20.2 h1:2HOYYN/iXtph+ll/6OD12/lNjjyxe88hnAtw/yN6Rkc=
+github.com/skevetter/devpod v0.20.2/go.mod h1:e+40Unj1nyTJvEOkQTGRcJc3XJvzKj5EMTsA+Zu3NLc=
 github.com/skevetter/log v0.0.0-20260106023547-bfd26ab1367c h1:2IjLo9V6TLV2rORRKKu+NVMSrOAEeuS4KJPk3v9e1rs=
 github.com/skevetter/log v0.0.0-20260106023547-bfd26ab1367c/go.mod h1:Aqjwx8xRSxBWtTYXK3EzxManSgYZl7FaSh8J5LvTAK0=
 github.com/soheilhy/cmux v0.1.5 h1:jjzc5WVemNEDTLwv9tlmemhC73tI08BNOIGwBOo10Js=
