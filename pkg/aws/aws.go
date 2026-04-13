@@ -1084,6 +1084,15 @@ func Create(
 	instanceID := aws.ToString(result.Instances[0].InstanceId)
 
 	if dataVolumeID != "" {
+		svc := ec2.NewFromConfig(providerAws.AwsConfig)
+		waiter := ec2.NewInstanceRunningWaiter(svc)
+		if err := waiter.Wait(ctx, &ec2.DescribeInstancesInput{
+			InstanceIds: []string{instanceID},
+		}, 5*time.Minute); err != nil {
+			terminateOnCleanup(providerAws, instanceID)
+			deleteVolume(cfg, dataVolumeID)
+			return Machine{}, fmt.Errorf("wait for instance %s to be running: %w", instanceID, err)
+		}
 		if err := attachDataVolume(ctx, providerAws, instanceID, dataVolumeID); err != nil {
 			terminateOnCleanup(providerAws, instanceID)
 			deleteVolume(cfg, dataVolumeID)
@@ -1682,7 +1691,19 @@ if ! mountpoint -q "%[2]s"; then
   echo "ERROR: failed to mount data volume at %[2]s" >&2; exit 1
 fi
 case "$DATA_FSTYPE" in ext4) resize2fs "$DATA_DEV" 2>/dev/null;; xfs) xfs_growfs "%[2]s" 2>/dev/null;; esac
-chown devpod:devpod "%[2]s"`
+chown devpod:devpod "%[2]s"
+mkdir -p "%[2]s/.containerd-root"
+mkdir -p /var/lib/containerd
+if ! mountpoint -q /var/lib/containerd; then
+  mount --bind "%[2]s/.containerd-root" /var/lib/containerd
+fi
+if ! grep -q '%[2]s/.containerd-root /var/lib/containerd' /etc/fstab; then
+  echo "%[2]s/.containerd-root /var/lib/containerd none bind 0 0" >> /etc/fstab
+fi
+if [ -n "$SNAPSHOT_ID" ] && [ -d "%[2]s/containers" ]; then
+  rm -rf "%[2]s/containers"/*
+  rm -rf "%[2]s/network/files"/*
+fi`
 }
 
 func logCallerIdentity(ctx context.Context, cfg aws.Config, logs log.Logger) error {
