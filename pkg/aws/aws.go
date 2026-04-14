@@ -1605,7 +1605,9 @@ chmod 0700 /home/devpod/.ssh
 chmod 0600 /home/devpod/.ssh/authorized_keys
 chown -R devpod:devpod /home/devpod`
 
+	resultScript += hookSnippet("post-ssh", config.HookPostSSH)
 	resultScript += dataVolumeMountScript(config)
+	resultScript += hookSnippet("post-volume", config.HookPostVolume)
 
 	return base64.StdEncoding.EncodeToString([]byte(resultScript)), nil
 }

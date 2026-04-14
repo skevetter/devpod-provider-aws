@@ -3,6 +3,7 @@ module github.com/skevetter/devpod-provider-aws
 go 1.25.8
 
 require (
+	al.essio.dev/pkg/shellescape v1.6.0
 	github.com/aws/aws-sdk-go-v2 v1.41.5
 	github.com/aws/aws-sdk-go-v2/config v1.32.14
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.14
@@ -15,11 +16,11 @@ require (
 	github.com/skevetter/devpod v0.21.1
 	github.com/skevetter/log v0.0.0-20260106023547-bfd26ab1367c
 	github.com/spf13/cobra v1.10.2
+	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.50.0
 )
 
 require (
-	al.essio.dev/pkg/shellescape v1.6.0 // indirect
 	cel.dev/expr v0.25.1 // indirect
 	github.com/AlecAivazis/survey/v2 v2.3.7 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
@@ -147,6 +148,7 @@ require (
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/api v0.35.3 // indirect
 	k8s.io/apimachinery v0.35.3 // indirect
 	k8s.io/apiserver v0.35.3 // indirect

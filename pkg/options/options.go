@@ -39,6 +39,10 @@ var (
 	AWS_SESSION_TOKEN                   = "AWS_SESSION_TOKEN"
 	CUSTOM_AWS_CREDENTIAL_COMMAND       = "CUSTOM_AWS_CREDENTIAL_COMMAND"
 
+	// User-data hook options (optional).
+	AWS_HOOK_POST_SSH    = "AWS_HOOK_POST_SSH"
+	AWS_HOOK_POST_VOLUME = "AWS_HOOK_POST_VOLUME"
+
 	// Data volume options (all optional).
 	AWS_DATA_VOLUME_SNAPSHOT_ID = "AWS_DATA_VOLUME_SNAPSHOT_ID"
 	AWS_DATA_VOLUME_SIZE        = "AWS_DATA_VOLUME_SIZE"
@@ -75,6 +79,10 @@ type Options struct {
 	SecretAccessKey            string
 	SessionToken               string
 
+	// User-data hooks executed during instance initialization
+	HookPostSSH    string
+	HookPostVolume string
+
 	// Optional secondary data volume
 	DataVolumeSnapshotID string
 	DataVolumeSizeGB     int
@@ -96,6 +104,8 @@ func FromEnv(init, withFolder bool) (*Options, error) {
 
 	var err error
 	retOptions.CustomCredentialCommand = os.Getenv(CUSTOM_AWS_CREDENTIAL_COMMAND)
+	retOptions.HookPostSSH = os.Getenv(AWS_HOOK_POST_SSH)
+	retOptions.HookPostVolume = os.Getenv(AWS_HOOK_POST_VOLUME)
 
 	retOptions.MachineType, err = fromEnvOrError(AWS_INSTANCE_TYPE)
 	if err != nil {

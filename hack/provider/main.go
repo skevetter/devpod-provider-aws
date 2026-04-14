@@ -189,6 +189,8 @@ func buildOptionGroups() []OptionGroup {
 				"AWS_DATA_VOLUME_DEVICE",
 				"AWS_DATA_VOLUME_MOUNT_PATH",
 				"AWS_DATA_VOLUME_TYPE",
+				"AWS_HOOK_POST_SSH",
+				"AWS_HOOK_POST_VOLUME",
 			},
 		},
 		{
@@ -625,6 +627,18 @@ func buildOptions() Options {
 		"AWS_DATA_VOLUME_TYPE": {
 			Description: "EBS volume type for the secondary data volume (e.g. gp3, gp2, st1, sc1).",
 			Default:     "gp3",
+		},
+		"AWS_HOOK_POST_SSH": {
+			Description: "Commands or S3 script (s3://bucket/path.sh) to run after " +
+				"user creation and SSH key injection, before data volume mount. " +
+				"Runs as root. Failures are logged but do not halt instance setup.",
+			Default: "",
+		},
+		"AWS_HOOK_POST_VOLUME": {
+			Description: "Commands or S3 script (s3://bucket/path.sh) to run after " +
+				"data volume mount, at the end of the user-data script. " +
+				"Runs as root. Failures are logged but do not halt instance setup.",
+			Default: "",
 		},
 	}
 }
