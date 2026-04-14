@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.7](https://github.com/skevetter/devpod-provider-aws/compare/v0.5.6...v0.5.7) (2026-04-14)
+
+
+### Bug Fixes
+
+* wait for instance readiness before attaching volume and persist bind-mount config ([#137](https://github.com/skevetter/devpod-provider-aws/issues/137)) ([e524ce5](https://github.com/skevetter/devpod-provider-aws/commit/e524ce5976d506cc917432db42f1810515d4162c))
+
 ## [0.5.6](https://github.com/skevetter/devpod-provider-aws/compare/v0.5.5...v0.5.6) (2026-04-13)
 
 
