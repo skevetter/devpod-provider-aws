@@ -1698,10 +1698,13 @@ chown devpod:devpod "%[2]s"
 mkdir -p "%[2]s/.containerd-root" || { echo "ERROR: failed to create containerd root dir" >&2; exit 1; }
 mkdir -p /var/lib/containerd || { echo "ERROR: failed to create /var/lib/containerd" >&2; exit 1; }
 if ! mountpoint -q /var/lib/containerd; then
-  mount --bind "%[2]s/.containerd-root" /var/lib/containerd || { echo "ERROR: failed to bind-mount containerd root" >&2; exit 1; }
+  if ! mount --bind "%[2]s/.containerd-root" /var/lib/containerd; then
+    echo "ERROR: failed to bind-mount containerd root" >&2; exit 1
+  fi
 fi
 if ! grep -qF '%[2]s/.containerd-root /var/lib/containerd' /etc/fstab; then
-  echo "%[2]s/.containerd-root /var/lib/containerd none bind 0 0" >> /etc/fstab || { echo "ERROR: failed to update /etc/fstab" >&2; exit 1; }
+  FSTAB_ENTRY="%[2]s/.containerd-root /var/lib/containerd none bind 0 0"
+  echo "$FSTAB_ENTRY" >> /etc/fstab || { echo "ERROR: failed to update /etc/fstab" >&2; exit 1; }
 fi
 if [ -n "$SNAPSHOT_ID" ] && [ -d "%[2]s/containers" ]; then
   rm -rf "%[2]s/containers"/* || true
