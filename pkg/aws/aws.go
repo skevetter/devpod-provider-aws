@@ -1084,7 +1084,6 @@ func Create(
 	instanceID := aws.ToString(result.Instances[0].InstanceId)
 
 	if dataVolumeID != "" {
-		svc := ec2.NewFromConfig(providerAws.AwsConfig)
 		waiter := ec2.NewInstanceRunningWaiter(svc)
 		if err := waiter.Wait(ctx, &ec2.DescribeInstancesInput{
 			InstanceIds: []string{instanceID},
