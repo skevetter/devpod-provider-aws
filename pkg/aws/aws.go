@@ -1695,17 +1695,17 @@ if ! mountpoint -q "%[2]s"; then
 fi
 case "$DATA_FSTYPE" in ext4) resize2fs "$DATA_DEV" 2>/dev/null;; xfs) xfs_growfs "%[2]s" 2>/dev/null;; esac
 chown devpod:devpod "%[2]s"
-mkdir -p "%[2]s/.containerd-root"
-mkdir -p /var/lib/containerd
+mkdir -p "%[2]s/.containerd-root" || { echo "ERROR: failed to create containerd root dir" >&2; exit 1; }
+mkdir -p /var/lib/containerd || { echo "ERROR: failed to create /var/lib/containerd" >&2; exit 1; }
 if ! mountpoint -q /var/lib/containerd; then
-  mount --bind "%[2]s/.containerd-root" /var/lib/containerd
+  mount --bind "%[2]s/.containerd-root" /var/lib/containerd || { echo "ERROR: failed to bind-mount containerd root" >&2; exit 1; }
 fi
-if ! grep -q '%[2]s/.containerd-root /var/lib/containerd' /etc/fstab; then
-  echo "%[2]s/.containerd-root /var/lib/containerd none bind 0 0" >> /etc/fstab
+if ! grep -qF '%[2]s/.containerd-root /var/lib/containerd' /etc/fstab; then
+  echo "%[2]s/.containerd-root /var/lib/containerd none bind 0 0" >> /etc/fstab || { echo "ERROR: failed to update /etc/fstab" >&2; exit 1; }
 fi
 if [ -n "$SNAPSHOT_ID" ] && [ -d "%[2]s/containers" ]; then
-  rm -rf "%[2]s/containers"/*
-  rm -rf "%[2]s/network/files"/*
+  rm -rf "%[2]s/containers"/* || true
+  rm -rf "%[2]s/network/files"/* || true
 fi`
 }
 
