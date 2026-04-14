@@ -39,6 +39,9 @@ var (
 	AWS_SESSION_TOKEN                   = "AWS_SESSION_TOKEN"
 	CUSTOM_AWS_CREDENTIAL_COMMAND       = "CUSTOM_AWS_CREDENTIAL_COMMAND"
 
+	// Custom user-data option (optional).
+	AWS_CUSTOM_USER_DATA = "AWS_CUSTOM_USER_DATA"
+
 	// Data volume options (all optional).
 	AWS_DATA_VOLUME_SNAPSHOT_ID = "AWS_DATA_VOLUME_SNAPSHOT_ID"
 	AWS_DATA_VOLUME_SIZE        = "AWS_DATA_VOLUME_SIZE"
@@ -75,6 +78,9 @@ type Options struct {
 	SecretAccessKey            string
 	SessionToken               string
 
+	// Custom shell commands injected into user-data before Docker installation
+	CustomUserData string
+
 	// Optional secondary data volume
 	DataVolumeSnapshotID string
 	DataVolumeSizeGB     int
@@ -95,6 +101,7 @@ func FromEnv(init, withFolder bool) (*Options, error) {
 
 	var err error
 	retOptions.CustomCredentialCommand = os.Getenv(CUSTOM_AWS_CREDENTIAL_COMMAND)
+	retOptions.CustomUserData = os.Getenv(AWS_CUSTOM_USER_DATA)
 
 	retOptions.MachineType, err = fromEnvOrError(AWS_INSTANCE_TYPE)
 	if err != nil {

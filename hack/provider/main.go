@@ -189,6 +189,7 @@ func buildOptionGroups() []OptionGroup {
 				"AWS_DATA_VOLUME_DEVICE",
 				"AWS_DATA_VOLUME_MOUNT_PATH",
 				"AWS_DATA_VOLUME_TYPE",
+				"AWS_CUSTOM_USER_DATA",
 			},
 		},
 		{
@@ -625,6 +626,13 @@ func buildOptions() Options {
 		"AWS_DATA_VOLUME_TYPE": {
 			Description: "EBS volume type for the secondary data volume (e.g. gp3, gp2, st1, sc1).",
 			Default:     "gp3",
+		},
+		"AWS_CUSTOM_USER_DATA": {
+			Description: "Custom shell commands to execute in the instance user-data script " +
+				"before Docker is installed. Runs as root. Useful for OS-level " +
+				"configuration such as patching APT sources or installing packages. " +
+				"Failures are logged but do not block SSH key injection or volume setup.",
+			Default: "",
 		},
 	}
 }
