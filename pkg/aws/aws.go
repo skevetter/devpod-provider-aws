@@ -1605,9 +1605,28 @@ chmod 0700 /home/devpod/.ssh
 chmod 0600 /home/devpod/.ssh/authorized_keys
 chown -R devpod:devpod /home/devpod`
 
+	resultScript += customUserDataSnippet(config)
 	resultScript += dataVolumeMountScript(config)
 
 	return base64.StdEncoding.EncodeToString([]byte(resultScript)), nil
+}
+
+// customUserDataSnippet returns a shell snippet that executes the operator-
+// supplied custom user-data commands. Failures are logged but do not prevent
+// the rest of the user-data script (SSH setup, volume mounts) from running.
+func customUserDataSnippet(config *options.Options) string {
+	if config.CustomUserData == "" {
+		return ""
+	}
+
+	return fmt.Sprintf(`
+
+# --- Custom user-data (AWS_CUSTOM_USER_DATA) ---
+if ! ( %s ); then
+  echo "WARNING: custom user-data commands exited with non-zero status" >&2
+fi`,
+		config.CustomUserData,
+	)
 }
 
 // dataVolumeMountScript returns a shell snippet that resolves the data volume
