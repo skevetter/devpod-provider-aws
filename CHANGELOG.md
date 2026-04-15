@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.11](https://github.com/skevetter/devpod-provider-aws/compare/v0.5.10...v0.5.11) (2026-04-15)
+
+
+### Bug Fixes
+
+* remove bump-patch-for-minor-pre-major so feat commits bump minor version ([#147](https://github.com/skevetter/devpod-provider-aws/issues/147)) ([ce0e2cc](https://github.com/skevetter/devpod-provider-aws/commit/ce0e2cc69ac86516e702a739b9e8da7f498ef79e))
+
 ## [0.5.10](https://github.com/skevetter/devpod-provider-aws/compare/v0.5.9...v0.5.10) (2026-04-15)
 
 
