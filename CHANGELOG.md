@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.10](https://github.com/skevetter/devpod-provider-aws/compare/v0.5.9...v0.5.10) (2026-04-15)
+
+
+### Features
+
+* add user-data hooks for EC2 instance initialization ([#143](https://github.com/skevetter/devpod-provider-aws/issues/143)) ([76c0c76](https://github.com/skevetter/devpod-provider-aws/commit/76c0c762c2b9f8568e816e84a06fa0052b5b7292))
+
 ## [0.5.9](https://github.com/skevetter/devpod-provider-aws/compare/v0.5.8...v0.5.9) (2026-04-14)
 
 
