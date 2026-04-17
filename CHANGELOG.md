@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.14](https://github.com/skevetter/devpod-provider-aws/compare/v0.5.13...v0.5.14) (2026-04-17)
+
+
+### Bug Fixes
+
+* **deps:** update aws-sdk-go-v2 monorepo ([#153](https://github.com/skevetter/devpod-provider-aws/issues/153)) ([add4fc4](https://github.com/skevetter/devpod-provider-aws/commit/add4fc48bb909618ed6023f66ffb5a6dee68803d))
+
 ## [0.5.13](https://github.com/skevetter/devpod-provider-aws/compare/v0.5.12...v0.5.13) (2026-04-16)
 
 
