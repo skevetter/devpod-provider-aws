@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.18](https://github.com/skevetter/devpod-provider-aws/compare/v0.5.17...v0.5.18) (2026-05-02)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/iam to v1.53.10 ([#165](https://github.com/skevetter/devpod-provider-aws/issues/165)) ([1200e80](https://github.com/skevetter/devpod-provider-aws/commit/1200e80f8405fda3f21901be2ba8de30afb615ef))
+
 ## [0.5.17](https://github.com/skevetter/devpod-provider-aws/compare/v0.5.16...v0.5.17) (2026-04-29)
 
 
