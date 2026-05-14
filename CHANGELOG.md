@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.23](https://github.com/skevetter/devpod-provider-aws/compare/v0.5.22...v0.5.23) (2026-05-14)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/skevetter/devpod to v0.23.0 ([#180](https://github.com/skevetter/devpod-provider-aws/issues/180)) ([97ab336](https://github.com/skevetter/devpod-provider-aws/commit/97ab336c6387fe15dd209b5fab66a7a01433cbda))
+
 ## [0.5.22](https://github.com/skevetter/devpod-provider-aws/compare/v0.5.21...v0.5.22) (2026-05-13)
 
 
