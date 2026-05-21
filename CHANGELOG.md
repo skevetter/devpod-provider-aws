@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/skevetter/devpod-provider-aws/compare/v0.5.25...v0.6.0) (2026-05-21)
+
+
+### Features
+
+* add support r8g and r8i instance types ([#177](https://github.com/skevetter/devpod-provider-aws/issues/177)) ([25fa3e8](https://github.com/skevetter/devpod-provider-aws/commit/25fa3e890e615d66043612b69d84548ac7207d5a))
+
 ## [0.5.25](https://github.com/skevetter/devpod-provider-aws/compare/v0.5.24...v0.5.25) (2026-05-21)
 
 
