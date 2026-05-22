@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.4](https://github.com/skevetter/devpod-provider-aws/compare/v0.6.3...v0.6.4) (2026-05-22)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/aws/aws-sdk-go-v2/config to v1.32.18 ([#194](https://github.com/skevetter/devpod-provider-aws/issues/194)) ([b69a822](https://github.com/skevetter/devpod-provider-aws/commit/b69a82251c154f7cee232c887c2a606e9f6b93cc))
+
 ## [0.6.3](https://github.com/skevetter/devpod-provider-aws/compare/v0.6.2...v0.6.3) (2026-05-22)
 
 
