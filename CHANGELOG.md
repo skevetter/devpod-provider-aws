@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.29](https://github.com/skevetter/devpod-provider-aws/compare/v0.6.28...v0.6.29) (2026-07-08)
+
+
+### Bug Fixes
+
+* **deps:** update module golang.org/x/crypto to v0.54.0 ([#252](https://github.com/skevetter/devpod-provider-aws/issues/252)) ([2e6f005](https://github.com/skevetter/devpod-provider-aws/commit/2e6f0057e05070ff107a3de93111345df985c228))
+
 ## [0.6.28](https://github.com/skevetter/devpod-provider-aws/compare/v0.6.27...v0.6.28) (2026-07-08)
 
 
