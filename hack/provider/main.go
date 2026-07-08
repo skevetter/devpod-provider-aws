@@ -240,7 +240,7 @@ func buildOptions() Options {
 		},
 		"AWS_PROFILE": {
 			Description: "The aws profile name to use",
-			Command:     `printf "%s" "${AWS_PROFILE:-default}"`,
+			Command:     `if [ "${AWS_PROFILE:-}" = "__unset__" ]; then printf ""; elif [ -n "${AWS_ACCESS_KEY_ID:-}" ] && [ -n "${AWS_SECRET_ACCESS_KEY:-}" ]; then printf ""; else printf "%s" "${AWS_PROFILE:-default}"; fi`,
 		},
 		"AWS_DISK_SIZE": {
 			Description: "The disk size to use.",

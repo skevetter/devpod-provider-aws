@@ -154,6 +154,8 @@ func buildConfigOptions(
 	switch {
 	case options.AccessKeyID != "" && options.SecretAccessKey != "":
 		log.Debugf("using provided AWS credentials")
+		_ = os.Unsetenv("AWS_PROFILE")
+		_ = os.Unsetenv("AWS_DEFAULT_PROFILE")
 		opts = append(opts, awsConfig.WithCredentialsProvider(credentials.StaticCredentialsProvider{
 			Value: aws.Credentials{
 				AccessKeyID:     options.AccessKeyID,
@@ -164,6 +166,8 @@ func buildConfigOptions(
 		opts = append(opts, awsConfig.WithSharedConfigFiles([]string{}))
 		opts = append(opts, awsConfig.WithSharedCredentialsFiles([]string{}))
 	case options.CustomCredentialCommand != "":
+		_ = os.Unsetenv("AWS_PROFILE")
+		_ = os.Unsetenv("AWS_DEFAULT_PROFILE")
 		creds, err := executeCredentialCommand(ctx, options.CustomCredentialCommand, log)
 		if err != nil {
 			return nil, fmt.Errorf("custom credential command: %w", err)
@@ -176,10 +180,16 @@ func buildConfigOptions(
 		opts = append(opts, awsConfig.WithSharedCredentialsFiles([]string{}))
 	default:
 		profile := os.Getenv("AWS_PROFILE")
+		if profile == "__unset__" {
+			profile = ""
+		}
 		if profile != "" {
 			log.Debugf("using AWS profile %s", profile)
+			opts = append(opts, awsConfig.WithSharedConfigProfile(profile))
 		} else {
 			log.Debugf("using default AWS credential chain")
+			_ = os.Unsetenv("AWS_PROFILE")
+			_ = os.Unsetenv("AWS_DEFAULT_PROFILE")
 		}
 	}
 
