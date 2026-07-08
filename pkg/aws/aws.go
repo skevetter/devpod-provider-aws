@@ -154,7 +154,6 @@ func buildConfigOptions(
 	switch {
 	case options.AccessKeyID != "" && options.SecretAccessKey != "":
 		log.Debugf("using provided AWS credentials")
-		_ = os.Unsetenv("AWS_PROFILE")
 		opts = append(opts, awsConfig.WithCredentialsProvider(credentials.StaticCredentialsProvider{
 			Value: aws.Credentials{
 				AccessKeyID:     options.AccessKeyID,
@@ -165,7 +164,6 @@ func buildConfigOptions(
 		opts = append(opts, awsConfig.WithSharedConfigFiles([]string{}))
 		opts = append(opts, awsConfig.WithSharedCredentialsFiles([]string{}))
 	case options.CustomCredentialCommand != "":
-		_ = os.Unsetenv("AWS_PROFILE")
 		creds, err := executeCredentialCommand(ctx, options.CustomCredentialCommand, log)
 		if err != nil {
 			return nil, fmt.Errorf("custom credential command: %w", err)
