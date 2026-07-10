@@ -19,10 +19,6 @@ func NewRootCmd() *cobra.Command {
 		SilenceUsage:  true,
 
 		PersistentPreRunE: func(cobraCmd *cobra.Command, args []string) error {
-			// Honor the debug signals devpod passes to provider processes.
-			// DEVPOD_LOG_LEVEL is always set (encodes --silent/--debug); DEVPOD_DEBUG
-			// is an explicit boolean set on the RunCommand/init path in debug mode.
-			// Mirrors devpod's own agent (cmd/agent/agent.go).
 			if lvl, err := logrus.ParseLevel(os.Getenv("DEVPOD_LOG_LEVEL")); err == nil {
 				log.Default.SetLevel(lvl)
 			}
