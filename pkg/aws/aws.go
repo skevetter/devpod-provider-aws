@@ -176,10 +176,15 @@ func buildConfigOptions(
 		opts = append(opts, awsConfig.WithSharedCredentialsFiles([]string{}))
 	default:
 		profile := os.Getenv("AWS_PROFILE")
+		if profile == "__unset__" {
+			profile = ""
+		}
 		if profile != "" {
 			log.Debugf("using AWS profile %s", profile)
+			opts = append(opts, awsConfig.WithSharedConfigProfile(profile))
 		} else {
 			log.Debugf("using default AWS credential chain")
+			_ = os.Unsetenv("AWS_PROFILE")
 		}
 	}
 
