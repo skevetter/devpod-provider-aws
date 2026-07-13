@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/skevetter/devpod-provider-aws/compare/v0.7.0...v0.7.1) (2026-07-13)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/ec2 to v1.316.1 ([#267](https://github.com/skevetter/devpod-provider-aws/issues/267)) ([3bc3576](https://github.com/skevetter/devpod-provider-aws/commit/3bc357675ca807cfe1768e5bcf2c75485fd23584))
+
 ## [0.7.0](https://github.com/skevetter/devpod-provider-aws/compare/v0.6.35...v0.7.0) (2026-07-13)
 
 
