@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/skevetter/devpod-provider-aws/compare/v0.6.35...v0.7.0) (2026-07-13)
+
+
+### Features
+
+* support alternative AWS credentials ([#249](https://github.com/skevetter/devpod-provider-aws/issues/249)) ([ec451bb](https://github.com/skevetter/devpod-provider-aws/commit/ec451bb45a47eb4455405785f7184c35c94c461d))
+
 ## [0.6.35](https://github.com/skevetter/devpod-provider-aws/compare/v0.6.34...v0.6.35) (2026-07-13)
 
 
