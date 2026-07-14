@@ -24,13 +24,6 @@ func NewRootCmd() *cobra.Command {
 			// stderr so enabling debug output never corrupts that channel.
 			log.Default = log.NewStreamLogger(os.Stderr, os.Stderr, logrus.InfoLevel)
 
-			if lvl, err := logrus.ParseLevel(os.Getenv("DEVPOD_LOG_LEVEL")); err == nil {
-				log.Default.SetLevel(lvl)
-			}
-			if os.Getenv("DEVPOD_DEBUG") == "true" {
-				log.Default.SetLevel(logrus.DebugLevel)
-			}
-
 			log.Default.MakeRaw()
 
 			return nil
