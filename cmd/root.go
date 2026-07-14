@@ -19,6 +19,11 @@ func NewRootCmd() *cobra.Command {
 		SilenceUsage:  true,
 
 		PersistentPreRunE: func(cobraCmd *cobra.Command, args []string) error {
+			// Provider stdout is a machine-readable channel that devpod parses
+			// (status, describe, command/SSH). Send all diagnostic logging to
+			// stderr so enabling debug output never corrupts that channel.
+			log.Default = log.NewStreamLogger(os.Stderr, os.Stderr, logrus.InfoLevel)
+
 			if lvl, err := logrus.ParseLevel(os.Getenv("DEVPOD_LOG_LEVEL")); err == nil {
 				log.Default.SetLevel(lvl)
 			}
