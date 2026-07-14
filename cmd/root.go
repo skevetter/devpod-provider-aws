@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/sirupsen/logrus"
 	"github.com/skevetter/log"
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh"
@@ -19,13 +18,6 @@ func NewRootCmd() *cobra.Command {
 		SilenceUsage:  true,
 
 		PersistentPreRunE: func(cobraCmd *cobra.Command, args []string) error {
-			if lvl, err := logrus.ParseLevel(os.Getenv("DEVPOD_LOG_LEVEL")); err == nil {
-				log.Default.SetLevel(lvl)
-			}
-			if os.Getenv("DEVPOD_DEBUG") == "true" {
-				log.Default.SetLevel(logrus.DebugLevel)
-			}
-
 			log.Default.MakeRaw()
 
 			return nil
