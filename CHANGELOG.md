@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/skevetter/devpod-provider-aws/compare/v0.7.1...v0.7.2) (2026-07-15)
+
+
+### Bug Fixes
+
+* support DEVPOD_LOG_LEVEL and DEVPOD_DEBUG environment variables ([#269](https://github.com/skevetter/devpod-provider-aws/issues/269)) ([a2168e3](https://github.com/skevetter/devpod-provider-aws/commit/a2168e3ec4814e4ea0fc5e1c813167e08cffbb89))
+
 ## [0.7.1](https://github.com/skevetter/devpod-provider-aws/compare/v0.7.0...v0.7.1) (2026-07-13)
 
 
