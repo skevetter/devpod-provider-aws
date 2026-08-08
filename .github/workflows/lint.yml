@@ -27,7 +27,7 @@ jobs:
           only-new-issues: true
 
       - name: megalinter
-        uses: oxsecurity/megalinter@v9
+        uses: oxsecurity/megalinter@v10
         if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
