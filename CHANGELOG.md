@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.15](https://github.com/skevetter/devpod-provider-aws/compare/v0.7.14...v0.7.15) (2026-08-13)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/sirupsen/logrus to v1.10.0 ([#301](https://github.com/skevetter/devpod-provider-aws/issues/301)) ([a9431d6](https://github.com/skevetter/devpod-provider-aws/commit/a9431d6188e84adc18bd731134c1af31773660e7))
+
 ## [0.7.14](https://github.com/skevetter/devpod-provider-aws/compare/v0.7.13...v0.7.14) (2026-08-12)
 
 
