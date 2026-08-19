@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.17](https://github.com/skevetter/devpod-provider-aws/compare/v0.7.16...v0.7.17) (2026-08-19)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/stretchr/testify to v1.12.0 ([#306](https://github.com/skevetter/devpod-provider-aws/issues/306)) ([3d2e93e](https://github.com/skevetter/devpod-provider-aws/commit/3d2e93e1aa5bdfdc68758556b16083813df725a7))
+
 ## [0.7.16](https://github.com/skevetter/devpod-provider-aws/compare/v0.7.15...v0.7.16) (2026-08-14)
 
 
